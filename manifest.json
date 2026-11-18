@@ -1,0 +1,780 @@
+{
+  "release": "4.4",
+  "schema_name": "dpm_r4_4",
+  "source_file": "DPM2 Database_v 4_4_20261006.accdb",
+  "source_path": "C:\\Users\\laszlo.miller\\Accenture\\RPSG - AI - Documents\\Use Cases\\04 MeWe Change 2030\\03_KI_Prozess\\_Geteilte_Ressourcen\\01_DPM\\04 DPM 4.4\\DPM2 Database_v 4_4_20261006.accdb",
+  "source_size_bytes": 599760896,
+  "source_sha256": "EF3B55F7A28E4213EA1F2E72A17C67A30F8FADBE5EE14B15170763D3767A3381",
+  "exported_at_utc": "2026-10-28T14:01:40Z",
+  "exported_by": "laszlo.miller",
+  "tooling": {
+    "python": "3.14.7",
+    "pyarrow": "25.0.1",
+    "pyodbc": "5.3.0"
+  },
+  "releases_in_source": [
+    {
+      "Code": "3.4",
+      "Date": "2024-02-06",
+      "Status": "released",
+      "IsCurrent": false,
+      "Type": "module",
+      "ReleaseID": 1
+    },
+    {
+      "Code": "3.5",
+      "Date": "2024-07-11",
+      "Status": "released",
+      "IsCurrent": false,
+      "Type": "module",
+      "ReleaseID": 2
+    },
+    {
+      "Code": "4.0",
+      "Date": "2024-12-19",
+      "Status": "released",
+      "IsCurrent": false,
+      "Type": "module",
+      "ReleaseID": 3
+    },
+    {
+      "Code": "4.1",
+      "Date": "2025-04-28",
+      "Status": "released",
+      "IsCurrent": false,
+      "Type": "module",
+      "ReleaseID": 4
+    },
+    {
+      "Code": "4.2",
+      "Date": "2025-10-31",
+      "Status": "released",
+      "IsCurrent": false,
+      "Type": "module",
+      "ReleaseID": 5
+    },
+    {
+      "Code": "4.2.1",
+      "Date": "2026-02-15",
+      "Status": "released",
+      "IsCurrent": false,
+      "Type": "module",
+      "ReleaseID": 1010000003
+    },
+    {
+      "Code": "4.2.1.1",
+      "Date": "2026-03-17",
+      "Status": "released",
+      "IsCurrent": false,
+      "Type": "deactivation",
+      "ReleaseID": 1010000006
+    },
+    {
+      "Code": "4.2.1.2",
+      "Date": "2026-06-10",
+      "Status": "released",
+      "IsCurrent": false,
+      "Type": "deactivation",
+      "ReleaseID": 1010000018
+    },
+    {
+      "Code": "4.3",
+      "Date": "2026-06-28",
+      "Status": "released",
+      "IsCurrent": false,
+      "Type": "module",
+      "ReleaseID": 1010000050
+    },
+    {
+      "Code": "4.3.0.1",
+      "Date": "2026-09-13",
+      "Status": "released",
+      "IsCurrent": false,
+      "Type": "deactivation",
+      "ReleaseID": 1010000115
+    },
+    {
+      "Code": "4.4",
+      "Date": "2026-12-30",
+      "Status": "validation",
+      "IsCurrent": true,
+      "Type": "module",
+      "ReleaseID": 1010000124
+    }
+  ],
+  "table_count": 70,
+  "total_rows": 5843285,
+  "tables": {
+    "Aux_CellMapping": {
+      "file": "data/Aux_CellMapping.parquet",
+      "file_sha256": "3CE0549AE4C0183050A3A1A76E33D111789904BD88D4A2D14FA6C4257D254E90",
+      "column_count": 4,
+      "row_count": 427,
+      "max_text_len_utf16": {}
+    },
+    "Aux_CellStatus": {
+      "file": "data/Aux_CellStatus.parquet",
+      "file_sha256": "C3171AF114615C1A4507530C7D0C518418DAB56EEB80B14663E7932B6E3A92ED",
+      "column_count": 4,
+      "row_count": 269611,
+      "max_text_len_utf16": {
+        "Status": 25
+      }
+    },
+    "Category": {
+      "file": "data/Category.parquet",
+      "file_sha256": "771453AE21BFE1E5F503E760F401DA297686D07D026979E0444EA2EEF482D52F",
+      "column_count": 11,
+      "row_count": 155,
+      "max_text_len_utf16": {
+        "Code": 3,
+        "Name": 50,
+        "Description": 518,
+        "RefDataSource": 0
+      }
+    },
+    "Cell": {
+      "file": "data/Cell.parquet",
+      "file_sha256": "F8B32845826F3A64A61BDE1716C725951C61FC0924EA38186221A95A37F58FCB",
+      "column_count": 7,
+      "row_count": 169933,
+      "max_text_len_utf16": {}
+    },
+    "ChangeLog": {
+      "file": "data/ChangeLog.parquet",
+      "file_sha256": "4080B659ED2FF2C43406DD13BE387E95DA18824949769D59FFC94A0F9C5AF0EC",
+      "column_count": 10,
+      "row_count": 0,
+      "max_text_len_utf16": {
+        "ChangeType": 0,
+        "Status": 0,
+        "UserEmail": 0,
+        "EntityCode": 0
+      }
+    },
+    "ChangeLogAttribute": {
+      "file": "data/ChangeLogAttribute.parquet",
+      "file_sha256": "DF6A27329094D444CD24E35F0F591FFEA87C68CCB66F11FD1768D42103D42B9D",
+      "column_count": 5,
+      "row_count": 0,
+      "max_text_len_utf16": {
+        "OldValue": 0,
+        "NewValue": 0
+      }
+    },
+    "CompoundItemContext": {
+      "file": "data/CompoundItemContext.parquet",
+      "file_sha256": "B4DC3A854BD3264B3EE27045BC76DE1C88752BD8C0DA919875B3BBE09467FD7E",
+      "column_count": 5,
+      "row_count": 90,
+      "max_text_len_utf16": {}
+    },
+    "CompoundKey": {
+      "file": "data/CompoundKey.parquet",
+      "file_sha256": "D21435DCC6D523DCFEE1D819CC72764D15A3688FD86816859FA6CC87AD6F8E80",
+      "column_count": 4,
+      "row_count": 254,
+      "max_text_len_utf16": {
+        "Signature": 99
+      }
+    },
+    "Concept": {
+      "file": "data/Concept.parquet",
+      "file_sha256": "5AA947E39E81E0816BFEC6EBF257963CA0B527AD304F50D21FBC8EB65000070A",
+      "column_count": 3,
+      "row_count": 837042,
+      "max_text_len_utf16": {}
+    },
+    "ConceptRelation": {
+      "file": "data/ConceptRelation.parquet",
+      "file_sha256": "E8A54EC16F49430B1825E22D30F651F7D504658E24A9E37AA454846F8BC57B9C",
+      "column_count": 3,
+      "row_count": 3,
+      "max_text_len_utf16": {
+        "Type": 22
+      }
+    },
+    "Context": {
+      "file": "data/Context.parquet",
+      "file_sha256": "E223FC7E35B556B27ADD44A6DA8F9D8503539F9AC1416E7E00F7E1A4B2D02AAA",
+      "column_count": 4,
+      "row_count": 249262,
+      "max_text_len_utf16": {
+        "Signature": 390
+      }
+    },
+    "ContextComposition": {
+      "file": "data/ContextComposition.parquet",
+      "file_sha256": "C300043A05DDFECC05F80147062B27099E19FD3C041EB632CCE431029D5E0D62",
+      "column_count": 4,
+      "row_count": 1757180,
+      "max_text_len_utf16": {}
+    },
+    "DataType": {
+      "file": "data/DataType.parquet",
+      "file_sha256": "9E3143A8D92E099C1821ED9DC31DD75A5E3DB8D380D06BA45A64C0A72E79FB19",
+      "column_count": 5,
+      "row_count": 13,
+      "max_text_len_utf16": {
+        "Code": 2,
+        "Name": 31
+      }
+    },
+    "Document": {
+      "file": "data/Document.parquet",
+      "file_sha256": "A855A4A2AAF37FD8E23ECCDE88163DB172A7A8454F0EBA8CE138B0F9411CA483",
+      "column_count": 6,
+      "row_count": 0,
+      "max_text_len_utf16": {
+        "Name": 0,
+        "Code": 0,
+        "Type": 0
+      }
+    },
+    "DocumentVersion": {
+      "file": "data/DocumentVersion.parquet",
+      "file_sha256": "5E88507D6EE54B7B7A093C602659450EEFBCA3636588DDBE21FF0C7F22F83539",
+      "column_count": 6,
+      "row_count": 0,
+      "max_text_len_utf16": {
+        "Code": 0,
+        "Version": 0,
+        "PublicationDate": 0
+      }
+    },
+    "DPMAttribute": {
+      "file": "data/DPMAttribute.parquet",
+      "file_sha256": "1FF587F7F9313BC2AC9DAF5B08C2B03E12C7515D58C377ADAC9025AA16BB9557",
+      "column_count": 4,
+      "row_count": 451,
+      "max_text_len_utf16": {
+        "Name": 31
+      }
+    },
+    "DPMClass": {
+      "file": "data/DPMClass.parquet",
+      "file_sha256": "F718BE3BBB02557CF36A27CCA06C716CE6A9D748CDAC003E50D408F2B2592986",
+      "column_count": 5,
+      "row_count": 72,
+      "max_text_len_utf16": {
+        "Name": 25,
+        "Type": 0
+      }
+    },
+    "Framework": {
+      "file": "data/Framework.parquet",
+      "file_sha256": "74B8E9F694CFDB25143E0C91338A46FAC81A3FB16E803FB6B8E13DC09383F164",
+      "column_count": 6,
+      "row_count": 22,
+      "max_text_len_utf16": {
+        "Code": 13,
+        "Name": 54,
+        "Description": 171
+      }
+    },
+    "Header": {
+      "file": "data/Header.parquet",
+      "file_sha256": "BC177EDE5C91C1E9747EAF3804D690FB133770129D35F2EF775A905506D56EF1",
+      "column_count": 7,
+      "row_count": 25289,
+      "max_text_len_utf16": {
+        "Direction": 1
+      }
+    },
+    "HeaderVersion": {
+      "file": "data/HeaderVersion.parquet",
+      "file_sha256": "573A931D480A5194ABF1195CC6DD71A34CDF2C4A7BE58670C735A62AD7CCEA28",
+      "column_count": 11,
+      "row_count": 50595,
+      "max_text_len_utf16": {
+        "Code": 4,
+        "Label": 429
+      }
+    },
+    "Item": {
+      "file": "data/Item.parquet",
+      "file_sha256": "845B0194B7E6E5FA1C880AE3BDA5462C668EF902BFB27E4949F31DA1E1A66335",
+      "column_count": 7,
+      "row_count": 15863,
+      "max_text_len_utf16": {
+        "Name": 474,
+        "Description": 1913
+      }
+    },
+    "ItemCategory": {
+      "file": "data/ItemCategory.parquet",
+      "file_sha256": "45BE965FE4BD9C10E0FA6DA7FD2BBD4020797276718F1EBAC134DC93167FFA88",
+      "column_count": 8,
+      "row_count": 16096,
+      "max_text_len_utf16": {
+        "Code": 14,
+        "Signature": 21
+      }
+    },
+    "KeyComposition": {
+      "file": "data/KeyComposition.parquet",
+      "file_sha256": "B51BA8CDFDF1541793063E551EF1AB4C87670B7DF3C9106A410176C06C6F3097",
+      "column_count": 3,
+      "row_count": 558,
+      "max_text_len_utf16": {}
+    },
+    "KeyHeaderMapping": {
+      "file": "data/KeyHeaderMapping.parquet",
+      "file_sha256": "F0E2872B6C9BCFF5A316CCBD32819373463DE6C40D34C08ECCD9727CB9E46B4A",
+      "column_count": 4,
+      "row_count": 44,
+      "max_text_len_utf16": {}
+    },
+    "Language": {
+      "file": "data/Language.parquet",
+      "file_sha256": "6DFEA9EEFA9D012D3CD0CB44F6C197F376C66B14CC41934AE8DDD3D58293F735",
+      "column_count": 2,
+      "row_count": 0,
+      "max_text_len_utf16": {
+        "Name": 0
+      }
+    },
+    "ModelViolations": {
+      "file": "data/ModelViolations.parquet",
+      "file_sha256": "215C9CB2C063CFBC81CB689863B74A884B01F68316DC06820C41FB8F1E26B427",
+      "column_count": 27,
+      "row_count": 54,
+      "max_text_len_utf16": {
+        "ViolationCode": 4,
+        "Violation": 201,
+        "TableCode": 9,
+        "HeaderCode": 4,
+        "HeaderDirection": 1,
+        "HeaderPropertyCode": 4,
+        "HeaderSubcategoryName": 0,
+        "CategoryCode": 3,
+        "ItemCode": 4,
+        "CellCode": 29,
+        "Cell2Code": 0,
+        "NewAspect": 0
+      }
+    },
+    "Module": {
+      "file": "data/Module.parquet",
+      "file_sha256": "2839844AE3FB6719E65535AB9F2CC5C1EBFC3463331C38B584E1542152548B54",
+      "column_count": 5,
+      "row_count": 62,
+      "max_text_len_utf16": {}
+    },
+    "ModuleParameters": {
+      "file": "data/ModuleParameters.parquet",
+      "file_sha256": "79B9E8632B6C7F638B59442F4C016BF99A477D9C6E268D58BD60F2F101B13C6B",
+      "column_count": 3,
+      "row_count": 2265,
+      "max_text_len_utf16": {}
+    },
+    "ModuleVersion": {
+      "file": "data/ModuleVersion.parquet",
+      "file_sha256": "1BA6E2A052C93540BBEAE1A63BA4B8D2480DF77CC404466EB4AD1DA925D7E928",
+      "column_count": 14,
+      "row_count": 165,
+      "max_text_len_utf16": {
+        "Code": 22,
+        "Name": 64,
+        "Description": 198,
+        "VersionNumber": 5,
+        "FromReferenceDate": 10,
+        "ToReferenceDate": 10
+      }
+    },
+    "ModuleVersionComposition": {
+      "file": "data/ModuleVersionComposition.parquet",
+      "file_sha256": "23DF9502C85B1AD13F7BF1D3C8C37BFA4C5579FAC82DCDAE78C610FB4BEC4A73",
+      "column_count": 5,
+      "row_count": 3493,
+      "max_text_len_utf16": {}
+    },
+    "OperandReference": {
+      "file": "data/OperandReference.parquet",
+      "file_sha256": "2E31E8FB1D92DA6A3DB71915C74FD181F25D8B21B01A2A171AB13AAE8F1EB004",
+      "column_count": 11,
+      "row_count": 623060,
+      "max_text_len_utf16": {
+        "OperandReference": 16
+      }
+    },
+    "OperandReferenceLocation": {
+      "file": "data/OperandReferenceLocation.parquet",
+      "file_sha256": "74E17712ECF2F1C423B3BEE6DC2153AB21E2B486E32555AA64F55EED9CBD4832",
+      "column_count": 6,
+      "row_count": 588878,
+      "max_text_len_utf16": {
+        "Table": 12,
+        "Row": 4,
+        "Column": 4,
+        "Sheet": 4
+      }
+    },
+    "Operation": {
+      "file": "data/Operation.parquet",
+      "file_sha256": "3DA12F1AE0B7C89DC12CE89284360E738104043EEF68F7BF16DF4DBC70F1A2C5",
+      "column_count": 7,
+      "row_count": 12354,
+      "max_text_len_utf16": {
+        "Code": 10,
+        "Type": 12,
+        "Source": 19
+      }
+    },
+    "OperationCodePrefix": {
+      "file": "data/OperationCodePrefix.parquet",
+      "file_sha256": "E1BCE22C00D905848CF6ABF94A0806903D50BAAC82332CDDD94D6C37A040D611",
+      "column_count": 4,
+      "row_count": 0,
+      "max_text_len_utf16": {
+        "Code": 0,
+        "ListName": 0
+      }
+    },
+    "OperationNode": {
+      "file": "data/OperationNode.parquet",
+      "file_sha256": "519A81A86C820DE6AF823D8667BA8108F3105B73CEAA746091FF47CD71A1B411",
+      "column_count": 12,
+      "row_count": 151240,
+      "max_text_len_utf16": {
+        "FallbackValue": 2,
+        "OperandType": 0,
+        "Scalar": 38
+      }
+    },
+    "OperationOutput": {
+      "file": "data/OperationOutput.parquet",
+      "file_sha256": "66342ED429FF66B2A2282BAD1DB334AB3930013991FBB8FD1EE34402BE75A2FB",
+      "column_count": 4,
+      "row_count": 0,
+      "max_text_len_utf16": {}
+    },
+    "OperationScope": {
+      "file": "data/OperationScope.parquet",
+      "file_sha256": "70686F2C042E770C30BE1C5DF9D3DD44FCC2D5E9B84992C6446ACFF3F65C2916",
+      "column_count": 7,
+      "row_count": 30791,
+      "max_text_len_utf16": {
+        "Severity": 7,
+        "FromSubmissionDate": 10
+      }
+    },
+    "OperationScopeComposition": {
+      "file": "data/OperationScopeComposition.parquet",
+      "file_sha256": "8512432009D4F52FD0BF563236B44956141D39D6E9D3512E4370C691CB6202C5",
+      "column_count": 3,
+      "row_count": 31561,
+      "max_text_len_utf16": {}
+    },
+    "OperationVersion": {
+      "file": "data/OperationVersion.parquet",
+      "file_sha256": "9D97057D48E12BD7527CA14F1B5FC9A2C896F36CC4EBD7C78F6BCBD802B0BCAD",
+      "column_count": 12,
+      "row_count": 19789,
+      "max_text_len_utf16": {
+        "Expression": 4941,
+        "Description": 1000,
+        "Endorsement": 8
+      }
+    },
+    "OperationVersionData": {
+      "file": "data/OperationVersionData.parquet",
+      "file_sha256": "474DB19BCDF32E050753C0DBEA22D517C7C80175A7245E7C2E0E2C6AB3223528",
+      "column_count": 5,
+      "row_count": 19789,
+      "max_text_len_utf16": {
+        "Error": 741,
+        "ErrorCode": 7,
+        "ProposingStatus": 11
+      }
+    },
+    "Operator": {
+      "file": "data/Operator.parquet",
+      "file_sha256": "E4784D243E5177EFA8EF9AF4E0489CA13D49A5FF9E60D60E3891E2B01243D077",
+      "column_count": 4,
+      "row_count": 39,
+      "max_text_len_utf16": {
+        "Name": 22,
+        "Symbol": 12,
+        "Type": 20
+      }
+    },
+    "OperatorArgument": {
+      "file": "data/OperatorArgument.parquet",
+      "file_sha256": "327247A5B798A393F2726C4A703AA9C12ACA4796F98E3F1FBF861DA426D11AD6",
+      "column_count": 5,
+      "row_count": 71,
+      "max_text_len_utf16": {
+        "Name": 16
+      }
+    },
+    "Organisation": {
+      "file": "data/Organisation.parquet",
+      "file_sha256": "124496EF407ADE9B0A785800699AF2344D643BBEA72625B61126756D5AFBAEE7",
+      "column_count": 6,
+      "row_count": 3,
+      "max_text_len_utf16": {
+        "Name": 54,
+        "Acronym": 5,
+        "URL": 25
+      }
+    },
+    "Property": {
+      "file": "data/Property.parquet",
+      "file_sha256": "74064D4889A5AC151BDF7D01F7C22D7B9F01DF6AB7898EFECDACF6CBB3938BEB",
+      "column_count": 8,
+      "row_count": 3318,
+      "max_text_len_utf16": {
+        "PeriodType": 9
+      }
+    },
+    "PropertyCategory": {
+      "file": "data/PropertyCategory.parquet",
+      "file_sha256": "09CF8A89AFBF15C4F93A72F3855F8D4FB2290323DE54D0D2EE0DBC2C97E97D27",
+      "column_count": 5,
+      "row_count": 3338,
+      "max_text_len_utf16": {}
+    },
+    "Reference": {
+      "file": "data/Reference.parquet",
+      "file_sha256": "BF0750779FF5D597EFE748BD66654CA9FEE1A14B14808EAE8832AC9D3D2950CA",
+      "column_count": 3,
+      "row_count": 0,
+      "max_text_len_utf16": {}
+    },
+    "RelatedConcept": {
+      "file": "data/RelatedConcept.parquet",
+      "file_sha256": "0772609D66C6FED1C61B98BFEA85701AAA5D445CBF4AA8C1414FA130B0B676B2",
+      "column_count": 4,
+      "row_count": 6,
+      "max_text_len_utf16": {}
+    },
+    "Release": {
+      "file": "data/Release.parquet",
+      "file_sha256": "E50053FFB54250E1423974B5A4B6B7C484D5B9986B588C9B0291D71A834A1337",
+      "column_count": 11,
+      "row_count": 11,
+      "max_text_len_utf16": {
+        "Code": 7,
+        "Date": 10,
+        "Description": 214,
+        "Status": 10,
+        "Type": 12,
+        "Error": 0
+      }
+    },
+    "Role": {
+      "file": "data/Role.parquet",
+      "file_sha256": "CB5F6E30499E331D5915C8E76B1CB0C567735DCF10E4101889EFB6E5502C8145",
+      "column_count": 2,
+      "row_count": 0,
+      "max_text_len_utf16": {
+        "Name": 0
+      }
+    },
+    "SubCategory": {
+      "file": "data/SubCategory.parquet",
+      "file_sha256": "E504E254A830C824493876E134AE11E6157D9FC4284E387F16F4DF9231D413D8",
+      "column_count": 7,
+      "row_count": 1215,
+      "max_text_len_utf16": {
+        "Code": 19,
+        "Name": 241,
+        "Description": 394
+      }
+    },
+    "SubCategoryItem": {
+      "file": "data/SubCategoryItem.parquet",
+      "file_sha256": "148712D9417FF499637E01DE783E6E6EF900DD6BF5006B59818FCC261AA303EE",
+      "column_count": 8,
+      "row_count": 26587,
+      "max_text_len_utf16": {
+        "Label": 0
+      }
+    },
+    "SubCategoryVersion": {
+      "file": "data/SubCategoryVersion.parquet",
+      "file_sha256": "D099044AD4CD7ADE86A1333883361345EFE9FF7964B77B09D6E49A0767ED4F7B",
+      "column_count": 5,
+      "row_count": 1323,
+      "max_text_len_utf16": {}
+    },
+    "Subdivision": {
+      "file": "data/Subdivision.parquet",
+      "file_sha256": "69055417C3BE352B9F5DC11A3EC6E8D105AFB82FD6DA4FEB18AC0769F0956A2B",
+      "column_count": 9,
+      "row_count": 0,
+      "max_text_len_utf16": {
+        "Number": 0,
+        "StructurePath": 0,
+        "TextExcerpt": 0
+      }
+    },
+    "SubdivisionType": {
+      "file": "data/SubdivisionType.parquet",
+      "file_sha256": "7BEA75E3DAD8587EFF89B3B4047FE84FF2F6F2E1B602DA70CACDA732076EE7EF",
+      "column_count": 3,
+      "row_count": 0,
+      "max_text_len_utf16": {
+        "Name": 0,
+        "Description": 0
+      }
+    },
+    "SuperCategoryComposition": {
+      "file": "data/SuperCategoryComposition.parquet",
+      "file_sha256": "BE9D8B923A624D2EFC85D3D1ED1654A354C1AA6031E5B9DCCF405BA02E756C61",
+      "column_count": 5,
+      "row_count": 104,
+      "max_text_len_utf16": {}
+    },
+    "Table": {
+      "file": "data/Table.parquet",
+      "file_sha256": "6E9C4AE9F3F251247CD744D72656C3C7B0B17B089340B442FFD2D315283A2183",
+      "column_count": 9,
+      "row_count": 1174,
+      "max_text_len_utf16": {}
+    },
+    "TableAssociation": {
+      "file": "data/TableAssociation.parquet",
+      "file_sha256": "C6C236A85FB478390F81F564F24ED76F6CC41E4A07A7F8538DC2C0B14ED68F1B",
+      "column_count": 14,
+      "row_count": 42,
+      "max_text_len_utf16": {
+        "Name": 50,
+        "Description": 28,
+        "ParentCardinalityAndOptionality": 1,
+        "ChildCardinalityAndOptionality": 3
+      }
+    },
+    "TableGroup": {
+      "file": "data/TableGroup.parquet",
+      "file_sha256": "BB0E6C839F47463FE76319DCD8003E009469E84251BF7C26C5A169EF9939A131",
+      "column_count": 10,
+      "row_count": 148,
+      "max_text_len_utf16": {
+        "Code": 124,
+        "Name": 125,
+        "Description": 134,
+        "Type": 13
+      }
+    },
+    "TableGroupComposition": {
+      "file": "data/TableGroupComposition.parquet",
+      "file_sha256": "12A05CB1F1F8EED75368F2E8E4D5FDCA9631B10FB5C21F88491BFD969B1F5049",
+      "column_count": 6,
+      "row_count": 1062,
+      "max_text_len_utf16": {}
+    },
+    "TableVersion": {
+      "file": "data/TableVersion.parquet",
+      "file_sha256": "F75257F8090569D72944692F5C6F1BB348FAE9572EB4A9D79038ECD99D0FFF10",
+      "column_count": 12,
+      "row_count": 2703,
+      "max_text_len_utf16": {
+        "Code": 12,
+        "Name": 202,
+        "Description": 202
+      }
+    },
+    "TableVersionCell": {
+      "file": "data/TableVersionCell.parquet",
+      "file_sha256": "25AEECABB70932FAE78A0D2706DE2D564876250217C4ECDB93DA0DED80BA3530",
+      "column_count": 9,
+      "row_count": 407898,
+      "max_text_len_utf16": {
+        "CellCode": 32,
+        "Sign": 8
+      }
+    },
+    "TableVersionHeader": {
+      "file": "data/TableVersionHeader.parquet",
+      "file_sha256": "74EBCA7A3EC161FB4321277178B90F570B73BCC088B7DD72E5026344E2B6DB6A",
+      "column_count": 9,
+      "row_count": 64106,
+      "max_text_len_utf16": {}
+    },
+    "Translation": {
+      "file": "data/Translation.parquet",
+      "file_sha256": "9829E8F556D360AF3160E735B9A5EC5A73201289C1D17439EA7F01CDE4B90E5B",
+      "column_count": 6,
+      "row_count": 0,
+      "max_text_len_utf16": {
+        "Translation": 0
+      }
+    },
+    "User": {
+      "file": "data/User.parquet",
+      "file_sha256": "212BAE9A0F3E22405487B70652067256596CF6146DF2283B06EBB20CDE244BEE",
+      "column_count": 3,
+      "row_count": 0,
+      "max_text_len_utf16": {
+        "Name": 0
+      }
+    },
+    "UserRole": {
+      "file": "data/UserRole.parquet",
+      "file_sha256": "7D4DDE40C5C5F0C702D55D787BB73B43AB9B6C713884CFB1560BC154350D3B67",
+      "column_count": 2,
+      "row_count": 0,
+      "max_text_len_utf16": {}
+    },
+    "VarGeneration_Detail": {
+      "file": "data/VarGeneration_Detail.parquet",
+      "file_sha256": "CCE00ED2DC552874AB7A8F5C9D0A1A97F983FCD8DE9B9CC19629C1319BED207D",
+      "column_count": 23,
+      "row_count": 4720,
+      "max_text_len_utf16": {
+        "NewAspect": 32,
+        "ModuleCode": 15,
+        "TableCode": 11,
+        "cellcode": 32,
+        "outcomeID": 9,
+        "outcomeVID": 9,
+        "ReportMsg": 114,
+        "OldAspect": 24
+      }
+    },
+    "VarGeneration_Summary": {
+      "file": "data/VarGeneration_Summary.parquet",
+      "file_sha256": "4BCF7934A36AA030269B1D45983AEF65FB97443902E36709C5DBC1F538B239E9",
+      "column_count": 6,
+      "row_count": 9,
+      "max_text_len_utf16": {
+        "outcomeid": 9,
+        "outcomevid": 9,
+        "ReportMsg": 114,
+        "mincell": 29,
+        "maxcell": 31
+      }
+    },
+    "Variable": {
+      "file": "data/Variable.parquet",
+      "file_sha256": "B2A62AB5CC4C62D8F6645DE7BBDBB9E450D2BA53D7673FF6864EEE9BCB5CE705",
+      "column_count": 4,
+      "row_count": 149015,
+      "max_text_len_utf16": {
+        "Type": 15
+      }
+    },
+    "VariableGeneration": {
+      "file": "data/VariableGeneration.parquet",
+      "file_sha256": "0EEC6B0171333F253DD6F1C38643A972965BCC23C2FCD2BF65D5A8D90BDEA446",
+      "column_count": 6,
+      "row_count": 359,
+      "max_text_len_utf16": {
+        "Status": 7,
+        "Error": 198
+      }
+    },
+    "VariableVersion": {
+      "file": "data/VariableVersion.parquet",
+      "file_sha256": "5DDC98FFB86E7CEF849E409D51DDF4A486453E2ACD7F67BA0BA9E3BA5885A429",
+      "column_count": 12,
+      "row_count": 299573,
+      "max_text_len_utf16": {
+        "Code": 11,
+        "Name": 0
+      }
+    }
+  }
+}
