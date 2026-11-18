@@ -23,6 +23,9 @@ const S = {
   meta: null, rules: null, ruleCells: null, lineage: null, search: null,
   mod: "FINREP9", doc: null, docs: new Map(), sheet: null, sel: null,
   view: "sheet", ruleFilter: "all", cellRules: null,
+  diff: null, diffIdx: [], cmpTypes: new Set(["new", "opened", "greyed", "dp", "sign", "lab", "rule"]),
+  dp: null, dpf: { metric: null, dims: new Map(), text: "", mods: new Set(["FINREP9", "AE"]), open: new Set() },
+  hier: null, hi: { cat: null, sub: null, hit: null, filter: "" },
 };
 
 // ------------------------------------------------------------------ Start
@@ -30,9 +33,12 @@ init().catch((e) => { document.body.innerHTML = `<pre style="padding:20px">Fehle
 
 async function init() {
   $("#gridwrap").innerHTML = '<div class="empty">Lade Daten …</div>';
-  const [meta, rules, lineage, search] = await Promise.all([
+  const [meta, rules, lineage, search, diffIdx] = await Promise.all([
     fetchJSON("data/meta.json"), fetchJSON("data/rules.json"), fetchJSON("data/lineage.json"), fetchJSON("data/search.json"),
+    fetchJSON("data/diff/index.json").catch(() => []),
   ]);
+  S.diffIdx = diffIdx;
+  S.lab = new Map(search.map((h) => [`${h[0]}|${h[1]}|${h[2]}`, h[3]]));
   S.meta = meta; S.rules = rules.rules; S.ruleCells = rules.cells; S.lineage = lineage; S.search = search;
   S.cellRules = new Map();
   for (const r of Object.values(S.rules)) for (const c of r.cells) {
@@ -44,6 +50,7 @@ async function init() {
   $("#dclose").onclick = () => { $("#details").hidden = true; selectCell(null); };
   initSearch();
   initTooltips();
+  initCompare();
   renderModSel();
   const h = parseHash();
   if (h.t) { S.mod = moduleOf(h.t) || S.mod; renderModSel(); await openTable(h.t, h); }
@@ -78,6 +85,8 @@ function setView(v) {
   $$(".view").forEach((s) => s.classList.toggle("on", s.id === "view-" + v));
   if (v === "lineage") renderLineage();
   if (v === "model") renderModel();
+  if (v === "dp") renderDP();
+  if (v === "hier") renderHier();
 }
 
 // ------------------------------------------------------------------ Modul & Inhaltsverzeichnis
@@ -96,19 +105,28 @@ function renderToc() {
   for (const t of tabs) {
     if (t.parent && tabs.some((x) => x.code === t.parent)) continue; // wird unter Elterntabelle gezeigt
     const kids = tabs.filter((x) => x.parent === t.code);
-    const match = (x) => !f || (x.code + " " + x.name).toLowerCase().includes(f) || tc(x.code).toLowerCase().includes(f);
+    const only = S.diff && $("#cmponly").checked;
+    const match = (x) => (!only || S.diff.tables[x.code]) && (!f || (x.code + " " + x.name).toLowerCase().includes(f) || tc(x.code).toLowerCase().includes(f));
     if (t.abstract) {
       const km = kids.filter(match);
       if (!km.length && !match(t)) continue;
       out.push(`<div class="grp">${esc(tc(t.code))} <span>${esc(t.name)}</span></div>`);
-      for (const k of (km.length ? km : kids)) out.push(tocItem(k, true));
+      for (const k of km) out.push(tocItem(k, true));
     } else if (match(t)) out.push(tocItem(t));
   }
   $("#toclist").innerHTML = out.join("") || '<div class="empty">Kein Treffer</div>';
   $$("#toclist .it").forEach((el) => el.onclick = () => openTable(el.dataset.t));
 }
 const tocItem = (t, child) => `<div class="it ${child ? "child" : ""} ${S.doc?.code === t.code ? "on" : ""}" data-t="${t.code}">
-  <b>${esc(tc(t.code))}</b><span>${esc(t.name)}</span></div>`;
+  <b>${esc(tc(t.code))}${changeBadge(t.code)}</b><span>${esc(t.name)}</span></div>`;
+function changeCount(e) {
+  return Object.keys(e.cells).length + e.removed.length + e.labels.length + e.rules.add.length + e.rules.del.length + e.rules.chg.length;
+}
+function changeBadge(code) {
+  const e = S.diff?.tables[code];
+  if (!e) return "";
+  return e.st === "new" ? `<span class="cb nw">neu</span>` : `<span class="cb" title="Anzahl Änderungen">${changeCount(e)}</span>`;
+}
 
 function renderTabs() {
   const tabs = modTables(S.mod).filter((t) => !t.abstract);
@@ -229,6 +247,16 @@ function colName(i) { let s = ""; i++; while (i > 0) { const m = (i - 1) % 26; s
 function renderGrid() {
   const doc = S.doc, L = buildLayout(doc);
   doc.L = L;
+  const D = S.diff?.tables[doc.code];
+  const ruleChCells = new Set();
+  if (D && S.cmpTypes.has("rule")) for (const id of [...D.rules.add, ...D.rules.chg.map((x) => x.id)]) for (const c of S.rules[id]?.cells || []) ruleChCells.add(c);
+  const labCh = new Map((D?.labels || []).filter(() => S.cmpTypes.has("lab")).map((l) => [`${l[0]}|${l[1]}`, l[2]]));
+  const chCls = (c) => {
+    if (!D) return "";
+    const t = (D.cells[c.id] || []).filter((x) => S.cmpTypes.has(x)).map((x) => "ch-" + x);
+    if (ruleChCells.has(c.id)) t.push("ch-rule");
+    return t.join(" ");
+  };
   const ncols = 2 + L.cols.length;
   const sheetKey = doc.sheets.length ? S.sheet : "";
   let rn = 0;
@@ -243,7 +271,10 @@ function renderGrid() {
     if (d === 0) inner += `<td class="blank" rowspan="${L.D + 1}"></td><td class="blank" rowspan="${L.D + 1}"></td>`;
     for (const x of hr) {
       if (x.blank) inner += `<td class="h" colspan="1" rowspan="${x.rowspan}"></td>`;
-      else inner += `<td class="h" colspan="${x.colspan}" rowspan="${x.rowspan}" title="${esc(x.h.label)}">${esc(x.h.label)}</td>`;
+      else {
+        const old = labCh.get(`c|${x.h.code}`);
+        inner += `<td class="h ${old != null ? "ch-lab" : ""}" colspan="${x.colspan}" rowspan="${x.rowspan}" title="${esc(old != null ? "Bisher: " + old : x.h.label)}">${esc(x.h.label)}</td>`;
+      }
     }
     out.push(row(inner));
   });
@@ -252,11 +283,11 @@ function renderGrid() {
   const dataCells = (rid) => L.cols.map((h) => {
     const c = doc.cellMap.get(`${rid ?? ""}|${h.id}|${sheetKey ?? ""}`);
     if (!c) return `<td class="d g"></td>`;
-    if (c.excl) return `<td class="d g" data-id="${c.id}"></td>`;
+    if (c.excl) return `<td class="d g ${chCls(c)}" data-id="${c.id}"></td>`;
     const rs = c.rules.map((id) => S.rules[id]).filter(Boolean);
     const err = rs.some((r) => Object.values(r.sev).includes("error"));
     const mk = rs.length ? `<i class="mk ${err ? "e" : ""}"></i>` : "";
-    return `<td class="d ${c.void ? "v" : ""}" data-id="${c.id}">${mk}</td>`;
+    return `<td class="d ${c.void ? "v" : ""} ${chCls(c)}" data-id="${c.id}">${mk}</td>`;
   }).join("");
 
   if (!L.rows.length) {
@@ -265,9 +296,11 @@ function renderGrid() {
   for (const r of L.rows) {
     const pad = 6 + r.depth * 16;
     const cls = r.h.abs ? "abs" : r.top ? "top" : "";
-    out.push(row(`<td class="rc">${esc(r.h.code || "")}</td><td class="rl ${cls}" style="padding-left:${pad}px">${esc(r.h.label)}</td>${dataCells(r.h.id)}`, `data-r="${r.h.id}"`));
+    const old = labCh.get(`r|${r.h.code}`);
+    out.push(row(`<td class="rc">${esc(r.h.code || "")}</td><td class="rl ${cls} ${old != null ? "ch-lab" : ""}" style="padding-left:${pad}px" ${old != null ? `title="Bisher: ${esc(old)}"` : ""}>${esc(r.h.label)}</td>${dataCells(r.h.id)}`, `data-r="${r.h.id}"`));
   }
   out.push("</tbody></table>");
+  renderCmpbar();
   $("#gridwrap").innerHTML = out.join("");
   $("#gridwrap").scrollTop = 0;
   $("#gridwrap table").addEventListener("click", (e) => {
@@ -357,6 +390,7 @@ function renderDetails(cell) {
   const shown = rs.filter((r) => S.ruleFilter === "all" || (S.ruleFilter === "e" ? r.sev[doc.module] === "error" : S.ruleFilter === "x" ? r.tables.length > 1 : r.sev[doc.module] !== "error"));
 
   const html = [];
+  html.push(cellChangeHtml(cell));
   html.push(`<div class="sec"><h4>Position im Meldebogen</h4><div class="kv">
     <div class="k">Zeile</div><div>${path(cell.r, "r")}</div>
     <div class="k">Spalte</div><div>${path(cell.c, "c")}</div>
@@ -372,7 +406,9 @@ function renderDetails(cell) {
       <div class="k">Variable</div><div><code class="c">${esc(v.id)}</code></div>
     </div>
     ${v.dims.length ? `<table class="dims" style="margin-top:8px">${v.dims.map((d) =>
-      `<tr><td>${esc(d[0])} <code class="c">${esc(d[1] || "")}</code></td><td><b>${esc(d[2])}</b> <code class="c">${esc(d[3] || "")}</code></td></tr>`).join("")}</table>` : ""}
+      `<tr><td>${esc(d[0])} <code class="c">${esc(d[1] || "")}</code></td><td><b>${esc(d[2])}</b> <code class="c">${esc(d[3] || "")}</code>
+        <button class="lnk" data-hp="${esc(d[0])}" data-hi="${esc(d[3] || "")}" title="Wert in seiner Hierarchie zeigen" style="font-size:11px">Hierarchie</button></td></tr>`).join("")}</table>` : ""}
+    <div class="more"><button class="lnk" data-act="dpsim">Ähnliche Datenpunkte suchen</button></div>
     </div>`);
   }
 
@@ -408,6 +444,8 @@ function renderDetails(cell) {
   bindChips($("#dbody"));
   $$("#dbody [data-act=lineage]").forEach((b) => b.onclick = () => { S.linRule = +b.dataset.rule; S.linMode = "cell"; setView("lineage"); });
   $$("#dbody [data-act=celllineage]").forEach((b) => b.onclick = () => { S.linRule = null; S.linMode = "cell"; setView("lineage"); });
+  $$("#dbody [data-hp]").forEach((b) => b.onclick = () => openHier(b.dataset.hp, b.dataset.hi));
+  $$("#dbody [data-act=dpsim]").forEach((b) => b.onclick = () => dpFromCell(cell));
 }
 
 function highlightRule(id, on) {
@@ -817,4 +855,304 @@ function renderModel() {
   setTimeout(() => { cym.resize(); cym.fit(undefined, 30); }, 0);
   showEntity(cell ? "cell" : "table");
   $("#modelside").insertAdjacentHTML("afterbegin", `<div class="legend" style="margin:0 0 10px"><span><i style="background:#f3faf5;border:1px solid #217346"></i>Layout (Meldebogen-Sicht)</span><span><i style="background:#f2f6fc;border:1px solid #2f6db5"></i>Bedeutung (Datenpunkt-Sicht)</span><span><i style="background:#fffaf0;border:1px solid #d68910"></i>Validierung</span></div>`);
+}
+
+// ------------------------------------------------------------------ Release-Vergleich
+const CH_TYPES = [
+  ["new", "Neue Zelle", "#c9ecd2"], ["opened", "Nicht mehr grau", "#c9ecd2"], ["greyed", "Neu grau", "#e7b3ad"],
+  ["dp", "Datenpunkt geändert", "#d6e4fb"], ["sign", "Vorzeichen geändert", "#e8d4f1"], ["lab", "Bezeichnung geändert", "#fff1a8"],
+  ["rule", "Regel neu/geändert", "#8e44ad"],
+];
+
+function initCompare() {
+  const sel = $("#cmpsel");
+  sel.innerHTML = `<option value="">– Vergleich aus –</option>` + S.diffIdx.map((d) => {
+    const n = (d.summary.tables_changed || 0) + (d.summary.tables_new || 0);
+    return `<option value="${esc(d.code)}">${esc(d.code)} (${esc(d.date)})${n ? "" : " – keine Änderung"}</option>`;
+  }).join("");
+  sel.onchange = async () => {
+    S.diff = sel.value ? await fetchJSON(`data/diff/${encodeURIComponent(sel.value)}.json`) : null;
+    $("#cmponlywrap").hidden = !S.diff;
+    renderToc(); renderGrid();
+    if (S.sel) { const c = S.doc.cById.get(S.sel.id); selectCell(c); }
+  };
+  $("#cmponly").onchange = renderToc;
+}
+
+function renderCmpbar() {
+  const bar = $("#cmpbar");
+  if (!S.diff || !S.doc) { bar.hidden = true; return; }
+  bar.hidden = false;
+  const e = S.diff.tables[S.doc.code];
+  const head = `<b>Änderungen seit ${esc(S.diff.base.code)}</b>`;
+  if (!e) { bar.innerHTML = `${head}: in diesem Meldebogen keine Änderungen.`; return; }
+  if (e.st === "new") { bar.innerHTML = `${head}: <b>Meldebogen ist neu</b> (gab es in ${esc(S.diff.base.code)} noch nicht).`; return; }
+  const cnt = {};
+  for (const ts of Object.values(e.cells)) for (const t of ts) cnt[t] = (cnt[t] || 0) + 1;
+  cnt.lab = e.labels.length;
+  cnt.rule = e.rules.add.length + e.rules.chg.length;
+  const toggles = CH_TYPES.filter(([k]) => cnt[k]).map(([k, l, col]) =>
+    `<span class="t ${S.cmpTypes.has(k) ? "" : "off"}" data-k="${k}" title="Ein-/ausblenden"><i style="background:${col}"></i>${l}: ${cnt[k]}</span>`).join("");
+  const extra = [];
+  if (e.removed.length) extra.push(`${e.removed.length} Zelle(n) entfallen`);
+  if (e.rules.del.length) extra.push(`${e.rules.del.length} Regel(n) entfallen`);
+  bar.innerHTML = `${head}: ${toggles} ${extra.length ? `<span>· ${extra.join(" · ")}</span>` : ""} <button class="lnk" id="chlist">Änderungsliste</button>`;
+  $$(".t", bar).forEach((t) => t.onclick = () => {
+    S.cmpTypes.has(t.dataset.k) ? S.cmpTypes.delete(t.dataset.k) : S.cmpTypes.add(t.dataset.k);
+    const sel = S.sel; renderGrid(); if (sel) selectCell(sel);
+  });
+  $("#chlist").onclick = showChangeList;
+}
+
+function dimsDiff(oldDims, newDims) {
+  const o = new Set(oldDims.map((d) => `${d[0]}: ${d[1]}`)), n = new Set(newDims.map((d) => `${d[0]}: ${d[2]}`));
+  const out = [];
+  for (const x of n) out.push(o.has(x) ? `<li>${esc(x)}</li>` : `<li class="plus">+ ${esc(x)}</li>`);
+  for (const x of o) if (!n.has(x)) out.push(`<li class="minus">− ${esc(x)}</li>`);
+  return `<ul>${out.join("")}</ul>`;
+}
+
+function cellChangeHtml(cell) {
+  if (!S.diff) return "";
+  const e = S.diff.tables[S.doc.code];
+  if (!e) return "";
+  const types = e.cells[cell.id] || [];
+  const ruleNew = e.rules.add.filter((id) => cell.rules.includes(id));
+  const ruleChg = e.rules.chg.filter((x) => cell.rules.includes(x.id));
+  if (!types.length && !ruleNew.length && !ruleChg.length && e.st !== "new") return "";
+  const L = Object.fromEntries(CH_TYPES.map(([k, l]) => [k, l]));
+  const items = [];
+  if (e.st === "new") items.push("<li>Meldebogen ist neu</li>");
+  for (const t of types) if (t !== "dp") items.push(`<li>${esc(L[t])}</li>`);
+  let dp = "";
+  if (types.includes("dp") && e.dp[cell.id]) {
+    const v = S.doc.vars[cell.var], [om, od] = e.dp[cell.id];
+    dp = `<div style="margin-top:4px"><b>Datenpunkt-Definition geändert</b>${om !== v.metric[0] ? ` – Kennzahl: <span class="minus">${esc(om)}</span> → <span class="plus">${esc(v.metric[0])}</span>` : ""}${dimsDiff(od, v.dims)}</div>`;
+  }
+  if (ruleNew.length) items.push(`<li>${ruleNew.length} neue Regel(n): ${ruleNew.map((id) => esc(S.rules[id].code)).join(", ")}</li>`);
+  if (ruleChg.length) items.push(`<li>${ruleChg.length} geänderte Regel(n): ${ruleChg.map((x) => esc(S.rules[x.id].code)).join(", ")}</li>`);
+  return `<div class="sec"><h4>Änderungen seit ${esc(S.diff.base.code)}</h4><div class="note chg"><ul>${items.join("")}</ul>${dp}</div></div>`;
+}
+
+function showChangeList() {
+  const doc = S.doc, e = S.diff?.tables[doc.code];
+  if (!e) return;
+  $("#details").hidden = false;
+  $("#dtitle").innerHTML = `<b>Änderungen ${esc(tc(doc.code))}</b><div style="color:#555;font-size:12px;margin-top:3px">Release ${esc(S.diff.base.code)} → ${esc(S.diff.cur.code)}</div>`;
+  const L = Object.fromEntries(CH_TYPES.map(([k, l]) => [k, l]));
+  const byType = {};
+  for (const [id, ts] of Object.entries(e.cells)) for (const t of ts) (byType[t] = byType[t] || []).push(+id);
+  const cellChip = (id) => {
+    const c = doc.cById.get(id); if (!c) return "";
+    const k = cellCodes(doc, c);
+    return `<span class="chip" data-t="${doc.code}" data-r="${k.r}" data-c="${k.c}" data-s="${k.s}" data-tip="${esc((S.lab.get(`${doc.code}|r|${k.r}`) || "") + "\n" + (S.lab.get(`${doc.code}|c|${k.c}`) || ""))}">r${k.r} · c${k.c}${k.s ? " · s" + k.s : ""}</span>`;
+  };
+  const h = [];
+  for (const [k] of CH_TYPES) if (byType[k]) h.push(`<div class="sec"><h4>${esc(L[k])} <span class="n">${byType[k].length}</span></h4><div class="chips">${byType[k].slice(0, 150).map(cellChip).join("")}${byType[k].length > 150 ? " …" : ""}</div></div>`);
+  if (e.removed.length) h.push(`<div class="sec"><h4>Entfallene Zellen <span class="n">${e.removed.length}</span></h4><div class="chg"><ul>${e.removed.map((x) => `<li class="minus">r${esc(x[0])} · c${esc(x[1])}${x[2] ? " · s" + esc(x[2]) : ""}</li><div style="color:#555;margin:-2px 0 4px 6px">${esc(x[3])} / ${esc(x[4])}</div>`).join("")}</ul></div></div>`);
+  if (e.labels.length) h.push(`<div class="sec"><h4>Geänderte Bezeichnungen <span class="n">${e.labels.length}</span></h4><div class="chg"><ul>${e.labels.map((l) => `<li><code class="c">${l[0]}${esc(l[1])}</code> <span class="minus">${esc(l[2])}</span> → <span class="plus">${esc(l[3])}</span></li>`).join("")}</ul></div></div>`);
+  const mod = doc.module;
+  if (e.rules.add.length) h.push(`<div class="sec"><h4>Neue Regeln <span class="n">${e.rules.add.length}</span></h4>${e.rules.add.map((id) => ruleCard(S.rules[id], null, mod)).join("")}</div>`);
+  if (e.rules.chg.length) h.push(`<div class="sec"><h4>Geänderte Regeln <span class="n">${e.rules.chg.length}</span></h4>${e.rules.chg.map((x) => ruleCard(S.rules[x.id], null, mod).replace("<details>", `<div class="pre"><b>Bisheriger Ausdruck:</b></div><pre>${esc(x.old)}</pre><details>`)).join("")}</div>`);
+  if (e.rules.del.length) h.push(`<div class="sec"><h4>Entfallene Regeln <span class="n">${e.rules.del.length}</span></h4>${e.rules.del.map((r) =>
+    `<div class="rule"><div class="rh"><b>${esc(r.code)}</b><span class="badge grey">entfallen</span></div><div class="rv">${r.verbal ? verbal(r.verbal) : ""}</div><details><summary>DPM-XL</summary><pre>${esc(r.expr)}</pre></details></div>`).join("")}<div class="hint">Verbalisierung entfallener Regeln mit den heutigen Bezeichnungen.</div></div>`);
+  $("#dbody").innerHTML = h.join("") || '<div class="hint">Keine Änderungen.</div>';
+  bindChips($("#dbody"));
+  $$("#dbody .rule[data-rule]").forEach((el) => {
+    el.onmouseenter = () => highlightRule(+el.dataset.rule, true);
+    el.onmouseleave = () => highlightRule(+el.dataset.rule, false);
+  });
+}
+
+// ------------------------------------------------------------------ Datenpunkt-Suche
+async function loadDP() {
+  if (S.dp) return;
+  const d = await fetchJSON("data/datapoints.json");
+  d.vars.forEach((v) => {
+    v.text = [d.props[v[0]][0], ...v[1].map(([p, i]) => d.props[p][0] + " " + d.items[i][0])].join(" | ").toLowerCase();
+    v.mods = new Set(v[2].map((c) => moduleOf(c[0])));
+  });
+  S.dp = d;
+}
+
+async function dpFromCell(cell) {
+  await loadDP();
+  const v = S.doc.vars[cell.var];
+  const P = S.dp.props, I = S.dp.items;
+  S.dpf.metric = P.findIndex((p) => p[1] === v.metric[1]);
+  S.dpf.dims = new Map();
+  for (const d of v.dims) {
+    const pi = P.findIndex((p) => p[1] === d[1]), ii = I.findIndex((x) => x[1] === d[3]);
+    if (pi >= 0 && ii >= 0) S.dpf.dims.set(pi, ii);
+  }
+  S.dpf.text = "";
+  setView("dp");
+}
+
+async function renderDP() {
+  $("#dpmain").innerHTML = '<div class="empty">Lade Datenpunkte …</div>';
+  await loadDP();
+  const F = S.dpf, P = S.dp.props, I = S.dp.items;
+  $("#dptext").value = F.text;
+  $("#dptext").oninput = () => { F.text = $("#dptext").value; renderDPResults(); };
+  $("#dpmod").innerHTML = S.meta.modules.map((m) => `<button data-m="${m.key}" class="${F.mods.has(m.key) ? "on" : ""}">${MOD_LABEL[m.key]}</button>`).join("");
+  $$("#dpmod button").forEach((b) => b.onclick = () => {
+    if (F.mods.has(b.dataset.m) && F.mods.size > 1) F.mods.delete(b.dataset.m); else F.mods.add(b.dataset.m);
+    renderDP();
+  });
+  renderDPResults();
+}
+
+function renderDPResults() {
+  const F = S.dpf, P = S.dp.props, I = S.dp.items;
+  const toks = F.text.toLowerCase().split(/\s+/).filter(Boolean);
+  const res = S.dp.vars.filter((v) =>
+    (F.metric == null || v[0] === F.metric) &&
+    [...F.dims].every(([p, i]) => v[1].some((d) => d[0] === p && d[1] === i)) &&
+    toks.every((t) => v.text.includes(t)) &&
+    [...v.mods].some((m) => F.mods.has(m)));
+  // aktive Filter
+  const act = [];
+  if (F.metric != null) act.push(`<div class="af">Kennzahl: <b>${esc(P[F.metric][0])}</b><button data-rm="m">✕</button></div>`);
+  for (const [p, i] of F.dims) act.push(`<div class="af">${esc(P[p][0])}: <b>${esc(I[i][0])}</b><button data-rm="${p}">✕</button></div>`);
+  $("#dpactive").innerHTML = act.length ? act.join("") + `<button class="lnk" id="dpclear">Alle Filter löschen</button>` : "";
+  $$("#dpactive [data-rm]").forEach((b) => b.onclick = () => { b.dataset.rm === "m" ? F.metric = null : F.dims.delete(+b.dataset.rm); renderDPResults(); });
+  $("#dpclear")?.addEventListener("click", () => { F.metric = null; F.dims.clear(); F.text = ""; $("#dptext").value = ""; renderDPResults(); });
+  // Facetten
+  const mc = new Map(), pc = new Map();
+  for (const v of res) {
+    mc.set(v[0], (mc.get(v[0]) || 0) + 1);
+    for (const [p, i] of v[1]) {
+      if (F.dims.has(p)) continue;
+      if (!pc.has(p)) pc.set(p, new Map());
+      pc.get(p).set(i, (pc.get(p).get(i) || 0) + 1);
+    }
+  }
+  const facet = (key, title, entries, click) => {
+    const open = F.open.has(key), sorted = [...entries].sort((a, b) => b[1] - a[1]);
+    const shown = open ? sorted : sorted.slice(0, 6);
+    return `<div class="facet"><h5>${esc(title)} <small>${sorted.length} Werte</small></h5>
+      ${shown.map(([k, n]) => `<div class="fv" data-f="${key}" data-v="${k}"><b style="font-weight:400">${esc(click(k))}</b><span>${n}</span></div>`).join("")}
+      ${sorted.length > 6 ? `<div class="fv more" data-more="${key}">${open ? "weniger" : `alle ${sorted.length} zeigen`}</div>` : ""}</div>`;
+  };
+  const fac = [];
+  if (F.metric == null) fac.push(facet("m", "Kennzahl", mc, (k) => P[k][0]));
+  const props = [...pc].sort((a, b) => [...b[1].values()].reduce((x, y) => x + y, 0) - [...a[1].values()].reduce((x, y) => x + y, 0));
+  for (const [p, m] of props.slice(0, 25)) fac.push(facet(String(p), P[p][0], m, (k) => I[k][0]));
+  $("#dpfacets").innerHTML = fac.join("");
+  $$("#dpfacets .fv[data-f]").forEach((el) => el.onclick = () => {
+    if (el.dataset.f === "m") F.metric = +el.dataset.v; else F.dims.set(+el.dataset.f, +el.dataset.v);
+    renderDPResults();
+  });
+  $$("#dpfacets .fv[data-more]").forEach((el) => el.onclick = () => { F.open.has(el.dataset.more) ? F.open.delete(el.dataset.more) : F.open.add(el.dataset.more); renderDPResults(); });
+  // Ergebnisse
+  const cells = [];
+  for (const v of res) for (const c of v[2]) if (F.mods.has(moduleOf(c[0]))) cells.push([c, v]);
+  const byT = new Map();
+  for (const x of cells) { if (!byT.has(x[0][0])) byT.set(x[0][0], []); byT.get(x[0][0]).push(x); }
+  const LIMIT = 400;
+  let n = 0;
+  const groups = [];
+  for (const [t, list] of byT) {
+    if (n >= LIMIT) break;
+    const rowsHtml = list.slice(0, LIMIT - n).map(([c, v]) => {
+      n++;
+      const rl = S.lab.get(`${t}|r|${c[1]}`) || "", cl = S.lab.get(`${t}|c|${c[2]}`) || "";
+      const rest = v[1].filter(([p]) => !F.dims.has(p)).map(([p, i]) => `${P[p][0]}: ${I[i][0]}`).join(" · ");
+      return `<div class="dpr" data-t="${t}" data-r="${c[1]}" data-c="${c[2]}" data-s="${c[3]}"><div class="loc">r${esc(c[1])} · c${esc(c[2])}${c[3] ? " · s" + esc(c[3]) : ""}</div>
+        <div class="lb">${esc(rl)} / <b>${esc(cl)}</b><small>${esc(P[v[0]][0])}${rest ? " · " + esc(rest) : ""}</small></div></div>`;
+    }).join("");
+    groups.push(`<div class="dpg"><h4>${esc(tc(t))} <span>${esc((S.lineage.nodes.find((x) => x.code === t) || {}).name || "")} · ${list.length} Zellen</span></h4>${rowsHtml}</div>`);
+  }
+  $("#dpmain").innerHTML = `<div class="cnt"><b>${res.length.toLocaleString("de-DE")}</b> Datenpunkte in <b>${cells.length.toLocaleString("de-DE")}</b> Zellen auf <b>${byT.size}</b> Meldebögen${cells.length > LIMIT ? ` – die ersten ${LIMIT} Zellen werden gezeigt, Filter verfeinern` : ""}.</div>
+    ${!F.metric && !F.dims.size && !toks.length ? `<div class="note" style="margin-bottom:12px">Links eine Kennzahl oder ein Merkmal wählen (z. B. <i>Counterparty sector → Households</i>) oder Freitext eingeben. Die Merkmale passen sich der aktuellen Auswahl an.</div>` : ""}
+    ${groups.join("")}`;
+  $$("#dpmain .dpr").forEach((el) => el.onclick = () => { setView("sheet"); openTable(el.dataset.t, { r: el.dataset.r, c: el.dataset.c, s: el.dataset.s }); });
+}
+
+// ------------------------------------------------------------------ Hierarchien
+function subName(s) {
+  if (s.name && !/^(subcategory|hierarchy)[_ ]?\w*$/i.test(s.name.trim())) return s.name;
+  const root = s.items.find((i) => i[2] == null);
+  return root ? root[0] : s.code;
+}
+async function loadHier() {
+  if (!S.hier) S.hier = await fetchJSON("data/hierarchies.json");
+}
+
+async function openHier(propName, itemSig) {
+  await loadHier();
+  const ci = S.hier.findIndex((c) => c.props.includes(propName));
+  if (ci < 0) return;
+  const subs = S.hier[ci].subs;
+  const cand = subs.map((s, i) => [s, i]).filter(([s]) => s.items.some((x) => x[1] === itemSig))
+    .sort((a, b) => (b[0].hier - a[0].hier) || (b[0].rules.length - a[0].rules.length) || (b[0].items.length - a[0].items.length));
+  const si = cand.length ? cand[0][1] : 0;
+  S.hi = { ...S.hi, cat: ci, sub: Math.max(0, si), hit: itemSig };
+  setView("hier");
+}
+
+async function renderHier() {
+  $("#himain").innerHTML = '<div class="empty">Lade Hierarchien …</div>';
+  await loadHier();
+  const H = S.hi;
+  $("#hifilter").value = H.filter;
+  $("#hifilter").oninput = () => { H.filter = $("#hifilter").value; renderHierCats(); };
+  if (H.cat == null) H.cat = Math.max(0, S.hier.findIndex((c) => c.code === "qSR"));
+  renderHierCats();
+}
+
+function renderHierCats() {
+  const H = S.hi, f = H.filter.toLowerCase();
+  const match = (c) => !f || (c.name + " " + c.code + " " + c.props.join(" ")).toLowerCase().includes(f)
+    || c.subs.some((s) => s.items.some((i) => (i[0] || "").toLowerCase().includes(f)));
+  $("#hicats").innerHTML = S.hier.map((c, i) => match(c) ? `<div class="hc-it ${i === H.cat ? "on" : ""}" data-i="${i}"><b>${esc(c.name)}</b>
+    <span>${esc(c.code)} · ${c.subs.length} Listen/Hierarchien${c.props.length ? " · Dimension: " + esc(c.props.slice(0, 2).join(", ")) + (c.props.length > 2 ? " …" : "") : ""}</span></div>` : "").join("");
+  $$("#hicats .hc-it").forEach((el) => el.onclick = () => { H.cat = +el.dataset.i; H.sub = 0; H.hit = null; renderHierCats(); });
+  $("#hicats .hc-it.on")?.scrollIntoView({ block: "nearest" });
+  renderHierSubs();
+}
+
+function renderHierSubs() {
+  const H = S.hi, cat = S.hier[H.cat];
+  if (!cat) return;
+  const f = H.filter.toLowerCase();
+  $("#hisubs").innerHTML = `<h4>${esc(cat.name)}</h4>` + cat.subs.map((s, i) => {
+    const hit = f && s.items.some((it) => (it[0] || "").toLowerCase().includes(f));
+    return `<div class="hs ${i === H.sub ? "on" : ""}" data-i="${i}"><b>${esc(subName(s))}</b>${hit ? " ●" : ""}
+      <small>${esc(s.code)} · ${s.hier ? "Hierarchie" : "Liste"} · ${s.items.length} Werte${s.rules.length ? ` · ${s.rules.length} Regeln` : ""}${s.tables.length ? ` · in ${s.tables.length} Bögen` : ""}</small></div>`;
+  }).join("");
+  $$("#hisubs .hs").forEach((el) => el.onclick = () => { H.sub = +el.dataset.i; renderHierSubs(); });
+  $("#hisubs .hs.on")?.scrollIntoView({ block: "nearest" });
+  renderHierMain();
+}
+
+function renderHierMain() {
+  const H = S.hi, cat = S.hier[H.cat], sub = cat?.subs[H.sub];
+  if (!sub) { $("#himain").innerHTML = ""; return; }
+  const kids = new Map();
+  sub.items.forEach((it, i) => { const p = it[2] ?? -1; if (!kids.has(p)) kids.set(p, []); kids.get(p).push(i); });
+  const f = H.filter.toLowerCase();
+  const node = (i, d) => {
+    const it = sub.items[i], ch = kids.get(i) || [];
+    const op = it[3] || "";
+    const opCls = op === "−" ? "m" : op === "=" || op === "≤" || op === "≥" ? "eq" : "";
+    const hit = (H.hit && it[1] === H.hit) || (f && (it[0] || "").toLowerCase().includes(f));
+    return `<div class="nd ${d === 0 && ch.length ? "root" : ""} ${hit ? "hit" : ""}" style="padding-left:${6 + d * 22}px">
+      <span class="op ${opCls}" title="${op === "=" ? "ist die Summe der darunterliegenden Werte" : op === "+" ? "wird addiert" : op === "−" ? "wird abgezogen" : ""}">${esc(op)}</span>
+      <span class="nm">${esc(it[0])}</span> <code>${esc(it[1] || "")}</code></div>` + ch.map((c) => node(c, d + 1)).join("");
+  };
+  const roots = kids.get(-1) || [];
+  const mod = S.doc?.module || "FINREP9";
+  $("#himain").innerHTML = `<h3>${esc(subName(sub))}</h3>
+    <div class="sub" style="color:#666">${esc(sub.code)} · Kategorie <b>${esc(cat.name)}</b> (${esc(cat.code)})${cat.props.length ? ` · genutzt von Dimension(en): ${esc(cat.props.join(", "))}` : ""}</div>
+    ${sub.desc ? `<p>${esc(sub.desc)}</p>` : ""}
+    ${sub.hier ? `<div class="note">Lesart: Ein Wert mit <b>=</b> ist die Summe der darunterliegenden Werte (<b>+</b> addieren, <b>−</b> abziehen). Aus solchen Hierarchien erzeugt die EBA automatisch Summenregeln für alle Meldebögen, die diese Dimension nutzen.</div>`
+      : `<div class="note">Werteliste ohne Summenbeziehung – z. B. die erlaubten Werte einer Aufzählungs-Spalte.</div>`}
+    <div class="tree">${roots.map((r) => node(r, 0)).join("")}</div>
+    ${sub.tables.length ? `<div class="sec"><h4>Direkt verwendet in Meldebögen <span class="n">${sub.tables.length}</span></h4><div class="chips">${sub.tables.map((t) => `<span class="chip" data-t="${t}">${esc(tc(t))}</span>`).join("")}</div></div>` : ""}
+    ${sub.rules.length ? `<div class="sec"><h4>Daraus erzeugte Regeln <span class="n">${sub.rules.length}</span></h4>${sub.rules.slice(0, 40).map((id) => S.rules[id] ? ruleCard(S.rules[id], null, Object.keys(S.rules[id].sev).includes(mod) ? mod : Object.keys(S.rules[id].sev)[0]) : "").join("")}${sub.rules.length > 40 ? `<div class="hint">… und ${sub.rules.length - 40} weitere</div>` : ""}</div>` : ""}`;
+  bindChips($("#himain"));
+  $$("#himain [data-act=lineage]").forEach((b) => b.onclick = () => { S.linRule = +b.dataset.rule; S.linMode = "cell"; setView("lineage"); });
+  $("#himain .nd.hit")?.scrollIntoView({ block: "center" });
 }

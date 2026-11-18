@@ -23,6 +23,7 @@ import duckdb
 
 sys.path.insert(0, os.path.dirname(__file__))
 from dpmxl import ParseError, Verbalizer, tcode  # noqa: E402
+from build_extras import build_datapoints, build_diffs, build_hierarchies  # noqa: E402
 
 MODULES = {457: "AE", 462: "FINREP9"}  # ModuleVID -> Kürzel (aktuelle Versionen in Release 4.4)
 
@@ -47,7 +48,7 @@ def main():
     os.makedirs(f"{args.out}/tables", exist_ok=True)
 
     # ------------------------------------------------------------------ Release
-    release = rows("select Code, Date from Release where IsCurrent")[0]
+    release = rows("select ReleaseID, Code, Date from Release where IsCurrent")[0]
 
     # ------------------------------------------------------------------ Items / Properties
     names = {r["ItemID"]: (r["Name"] or "").strip() for r in rows("select ItemID, Name from Item")}
@@ -209,8 +210,10 @@ def main():
         from VariableVersion where VariableVID in ({",".join(map(str, var_vids))})""")}
     ctx_ids = {v["ContextID"] for v in vv.values() if v["ContextID"]}
     ctx = defaultdict(list)
+    ctx_raw = defaultdict(list)
     for r in rows(f"""select ContextID, PropertyID, ItemID from ContextComposition
                       where ContextID in ({",".join(map(str, ctx_ids))})"""):
+        ctx_raw[r["ContextID"]].append((r["PropertyID"], r["ItemID"]))
         ctx[r["ContextID"]].append([names.get(r["PropertyID"]), sig.get(r["PropertyID"]),
                                     names.get(r["ItemID"]), sig.get(r["ItemID"])])
     subcats = {r["SubCategoryVID"]: r for r in rows("""
@@ -313,6 +316,14 @@ def main():
     with open(f"{args.out}/search.json", "w", encoding="utf-8") as f:
         json.dump(search, f, ensure_ascii=False, separators=(",", ":"))
 
+    # ------------------------------------------------------------------ Zusatzauswertungen
+    extra = {"con": con, "rows": rows, "out": args.out, "modules": MODULES, "names": names, "sig": sig,
+             "verb": verb, "rules": rules, "release_id": release["ReleaseID"], "cells": cells, "vv": vv,
+             "ctx_raw": ctx_raw, "prop_dtype": prop_dtype, "headers": headers, "tabs": tabs}
+    build_datapoints(extra)
+    build_hierarchies(extra)
+    build_diffs(extra)
+
     # ------------------------------------------------------------------ Meta
     counts = {}
     for t in ["Framework", "Module", "ModuleVersion", "Table", "TableVersion", "Header", "HeaderVersion", "Cell",
@@ -329,6 +340,7 @@ def main():
                     for m in mods],
         "counts": counts,
     }
+    meta["release"] = {"Code": release["Code"], "Date": str(release["Date"])}
     meta["modules"].sort(key=lambda m: m["key"] != "FINREP9")
     with open(f"{args.out}/meta.json", "w", encoding="utf-8") as f:
         json.dump(meta, f, ensure_ascii=False, indent=1)

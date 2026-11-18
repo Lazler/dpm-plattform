@@ -12,6 +12,8 @@
   <nav class="views" id="views">
     <button data-view="sheet" class="on">Meldebögen</button>
     <button data-view="lineage">Lineage</button>
+    <button data-view="dp">Datenpunkte</button>
+    <button data-view="hier">Hierarchien</button>
     <button data-view="model">DPM-Struktur</button>
   </nav>
   <div class="search">
@@ -25,6 +27,10 @@
   <section id="view-sheet" class="view on">
     <aside class="toc" id="toc">
       <div class="modsel" id="modsel"></div>
+      <div class="cmp">
+        <label>Änderungen seit <select id="cmpsel"><option value="">– Vergleich aus –</option></select></label>
+        <label class="chk" id="cmponlywrap" hidden><input type="checkbox" id="cmponly"> nur geänderte</label>
+      </div>
       <input id="tocfilter" type="search" placeholder="Meldebogen filtern …">
       <div class="toclist" id="toclist"></div>
     </aside>
@@ -35,6 +41,7 @@
         <div class="fx">fx</div>
         <div class="fxval" id="fxval">Zelle anklicken, um Datenpunkt, Regeln und Zusammenhänge zu sehen</div>
       </div>
+      <div class="cmpbar" id="cmpbar" hidden></div>
       <div class="zbar" id="zbar" hidden></div>
       <div class="gridwrap" id="gridwrap"><div class="empty">Meldebogen wählen …</div></div>
       <div class="tabs" id="tabs"></div>
@@ -65,6 +72,29 @@
       <div id="cy" class="cy"></div>
       <aside class="lin-side" id="linside"></aside>
     </div>
+  </section>
+
+  <!-- ===================== Datenpunkte ===================== -->
+  <section id="view-dp" class="view">
+    <aside class="dp-side">
+      <h3>Datenpunkt-Suche</h3>
+      <div class="sub">Datenpunkte nach Kennzahl und Merkmalen finden – über alle Meldebögen hinweg.</div>
+      <input id="dptext" type="search" placeholder="Freitext, z. B. Households, Stage 2 …">
+      <div class="seg" id="dpmod"></div>
+      <div id="dpactive"></div>
+      <div id="dpfacets"></div>
+    </aside>
+    <div class="dp-main" id="dpmain"></div>
+  </section>
+
+  <!-- ===================== Hierarchien ===================== -->
+  <section id="view-hier" class="view">
+    <aside class="hi-cats">
+      <input id="hifilter" type="search" placeholder="Dimension oder Wert filtern …">
+      <div id="hicats"></div>
+    </aside>
+    <aside class="hi-subs" id="hisubs"></aside>
+    <div class="hi-main" id="himain"></div>
   </section>
 
   <!-- ===================== DPM-Struktur ===================== -->
