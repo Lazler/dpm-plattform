@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DPM Explorer</title>
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand"><span class="logo">▦</span> DPM Explorer <span class="rel" id="rel"></span></div>
+  <nav class="views" id="views">
+    <button data-view="sheet" class="on">Meldebögen</button>
+    <button data-view="lineage">Lineage</button>
+    <button data-view="model">DPM-Struktur</button>
+  </nav>
+  <div class="search">
+    <input id="q" type="search" placeholder="Suche: F 01.01, „Equity instruments“, v0765_m, r0110 c0010 …" autocomplete="off">
+    <div class="results" id="results" hidden></div>
+  </div>
+</header>
+
+<main>
+  <!-- ===================== Meldebogen-Ansicht ===================== -->
+  <section id="view-sheet" class="view on">
+    <aside class="toc" id="toc">
+      <div class="modsel" id="modsel"></div>
+      <input id="tocfilter" type="search" placeholder="Meldebogen filtern …">
+      <div class="toclist" id="toclist"></div>
+    </aside>
+
+    <div class="book">
+      <div class="formulabar">
+        <div class="namebox" id="namebox">–</div>
+        <div class="fx">fx</div>
+        <div class="fxval" id="fxval">Zelle anklicken, um Datenpunkt, Regeln und Zusammenhänge zu sehen</div>
+      </div>
+      <div class="zbar" id="zbar" hidden></div>
+      <div class="gridwrap" id="gridwrap"><div class="empty">Meldebogen wählen …</div></div>
+      <div class="tabs" id="tabs"></div>
+    </div>
+
+    <aside class="details" id="details" hidden>
+      <div class="dhead">
+        <div id="dtitle"></div>
+        <button class="x" id="dclose" title="Schließen">✕</button>
+      </div>
+      <div class="dbody" id="dbody"></div>
+    </aside>
+  </section>
+
+  <!-- ===================== Lineage ===================== -->
+  <section id="view-lineage" class="view">
+    <div class="lin-tools">
+      <div class="seg" id="linmode">
+        <button data-m="tables" class="on">Tabellen-Zusammenhänge</button>
+        <button data-m="cell">Zell-Lineage</button>
+      </div>
+      <div class="seg" id="linmod"></div>
+      <label class="chk" id="linextwrap"><input type="checkbox" id="linext"> Tabellen anderer Module zeigen</label>
+      <label class="chk" id="lindepthwrap" hidden><input type="checkbox" id="lindepth"> 2. Ebene</label>
+      <span class="hint" id="linhint"></span>
+    </div>
+    <div class="lin-main">
+      <div id="cy" class="cy"></div>
+      <aside class="lin-side" id="linside"></aside>
+    </div>
+  </section>
+
+  <!-- ===================== DPM-Struktur ===================== -->
+  <section id="view-model" class="view">
+    <div class="model-main">
+      <div class="model-left">
+        <div class="model-intro" id="modelintro"></div>
+        <div id="cym" class="cy"></div>
+      </div>
+      <aside class="model-side" id="modelside"></aside>
+    </div>
+  </section>
+</main>
+
+<div class="tip" id="tip" hidden></div>
+<script src="vendor/cytoscape.min.js"></script>
+<script type="module" src="app.js"></script>
+</body>
+</html>
