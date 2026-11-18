@@ -72,6 +72,12 @@ def main():
                     from ModuleVersionComposition c join TableVersion tv using(TableVID) join "Table" t on t.TableID=tv.TableID
                     where c.ModuleVID in ({mv_list}) order by c.ModuleVID, c."Order" """)
     tab_by_vid = {t["TableVID"]: t for t in tabs}
+    # EBA-Gruppierung der Meldebögen (z. B. "FinRep - Part 1")
+    tgroup = {}
+    for r in rows("""select tgc.TableID, tg.Name, tg.Code, tgc."Order" ord from TableGroupComposition tgc
+                     join TableGroup tg using(TableGroupID)
+                     where tg.EndReleaseID is null and tgc.EndReleaseID is null"""):
+        tgroup.setdefault(r["TableID"], r["Name"])
     abstract_code = {t["TableID"]: t["Code"] for t in tabs if t["IsAbstract"]}
 
     # Labels auch für Tabellen außerhalb der Module (z. B. P_01.01 in Regeln)
@@ -240,7 +246,8 @@ def main():
     for t in tabs:
         mod = MODULES[t["ModuleVID"]]
         entry = {"code": t["Code"], "name": t["Name"], "abstract": bool(t["IsAbstract"]),
-                 "parent": abstract_code.get(t["AbstractTableID"])}
+                 "parent": abstract_code.get(t["AbstractTableID"]),
+                 "group": tgroup.get(t["TableID"]) or tgroup.get(t["AbstractTableID"]) or "Weitere Meldebögen"}
         if t["IsAbstract"]:
             meta_tables[mod].append(entry)
             continue

@@ -14,6 +14,16 @@ Aktueller Umfang: **FINREP (IFRS 9)** und **Asset Encumbrance**.
 | **Hierarchien** | Kategorien und Unterkategorien (Wertelisten und Summenhierarchien) als Baum, inkl. der daraus erzeugten Hierarchie-Regeln und der Meldebögen, die sie nutzen. |
 | **DPM-Struktur** | Das Metamodell des DPM erklärt, mit Beispiel aus der gewählten Zelle. |
 
+## Bedienung
+
+- **Startseite** mit Kennzahlen je Modul, Release-Änderungen und Einstieg in alle Ansichten.
+- **Excel-Verhalten:** fixierte Kopfzeilen und Zeilenspalten, Blattregister, Zoom, Statusleiste.
+- **Regel-Ebene** umschaltbar: aus · Fehler-Marker · Heatmap (Anzahl Regeln je Zelle).
+- **Detailpanel** mit Reitern: Überblick · Regeln (kompakt, aufklappbar) · Zusammenhänge · Änderungen.
+- **Tastatur:** `/` Suche · Pfeiltasten/Tab Zelle wechseln · `Enter` Details · `Esc` schließen ·
+  `Strg+F` im Bogen suchen · `Strg+C` Zellbezug kopieren · `Strg+Bild↑/↓` Blatt wechseln.
+- **Browser-Verlauf und Links:** Zurück/Vor funktioniert, jede Zelle hat eine teilbare URL (z. B. `#/F_01.01?r=0110&c=0010`).
+
 ## Starten
 
 Voraussetzung: Python 3.

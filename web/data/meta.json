@@ -18,6 +18,7 @@
      "name": "Nature of Report (FINREP)",
      "abstract": false,
      "parent": null,
+     "group": "FinRep - General Information",
      "cells": 2,
      "rules": 93
     },
@@ -26,6 +27,7 @@
      "name": "Balance Sheet Statement [Statement of Financial Position]: Assets",
      "abstract": false,
      "parent": null,
+     "group": "FinRep - Part 1",
      "cells": 61,
      "rules": 146
     },
@@ -34,6 +36,7 @@
      "name": "Balance Sheet Statement [Statement of Financial Position]: Liabilities",
      "abstract": false,
      "parent": null,
+     "group": "FinRep - Part 1",
      "cells": 42,
      "rules": 57
     },
@@ -42,6 +45,7 @@
      "name": "Balance Sheet Statement [Statement of Financial Position]: Equity",
      "abstract": false,
      "parent": null,
+     "group": "FinRep - Part 1",
      "cells": 52,
      "rules": 18
     },
@@ -50,6 +54,7 @@
      "name": "Statement of profit or loss",
      "abstract": false,
      "parent": null,
+     "group": "FinRep - Part 1",
      "cells": 83,
      "rules": 94
     },
@@ -58,6 +63,7 @@
      "name": "Statement of comprehensive income",
      "abstract": false,
      "parent": null,
+     "group": "FinRep - Part 1",
      "cells": 45,
      "rules": 14
     },
@@ -66,6 +72,7 @@
      "name": "Breakdown of financial assets by instrument and by counterparty sector: financial assets held for trading",
      "abstract": false,
      "parent": null,
+     "group": "FinRep - Part 1",
      "cells": 19,
      "rules": 31
     },
@@ -74,6 +81,7 @@
      "name": "Breakdown of financial assets by instrument and by counterparty sector: non-trading financial assets mandatorily at fair value through profit or loss",
      "abstract": false,
      "parent": null,
+     "group": "FinRep - Part 1",
      "cells": 36,
      "rules": 47
     },
@@ -82,6 +90,7 @@
      "name": "Breakdown of financial assets by instrument and by counterparty sector: financial assets designated at fair value through profit or loss",
      "abstract": false,
      "parent": null,
+     "group": "FinRep - Part 1",
      "cells": 38,
      "rules": 51
     },
@@ -90,6 +99,7 @@
      "name": "Breakdown of financial assets by instrument and by counterparty sector: financial assets at fair value through other comprehensive income",
      "abstract": false,
      "parent": null,
+     "group": "FinRep - Part 1",
      "cells": 228,
      "rules": 128
     },
@@ -98,6 +108,7 @@
      "name": "Breakdown of financial assets by instrument and by counterparty sector: financial assets at amortised cost",
      "abstract": false,
      "parent": null,
+     "group": "FinRep - Part 1",
      "cells": 180,
      "rules": 127
     },
@@ -106,6 +117,7 @@
      "name": "Subordinated financial assets",
      "abstract": false,
      "parent": null,
+     "group": "FinRep - Part 1",
      "cells": 3,
      "rules": 3
     },
@@ -114,6 +126,7 @@
      "name": "Breakdown of financial assets by instrument and by counterparty sector: trading financial assets",
      "abstract": false,
      "parent": null,
+     "group": "FinRep - Part 1 (GAAP only)",
      "cells": 20,
      "rules": 31
     },
@@ -122,6 +135,7 @@
      "name": "Breakdown of financial assets by instrument and by counterparty sector: non-trading non-derivative financial assets measured at fair value through profit or loss",
      "abstract": false,
      "parent": null,
+     "group": "FinRep - Part 1 (GAAP only)",
      "cells": 38,
      "rules": 50
     },
@@ -130,6 +144,7 @@
      "name": "Breakdown of financial assets by instrument and by counterparty sector: non-trading non-derivative financial assets measured at fair value to equity",
      "abstract": false,
      "parent": null,
+     "group": "FinRep - Part 1 (GAAP only)",
      "cells": 200,
      "rules": 80
     },
@@ -138,6 +153,7 @@
      "name": "Breakdown of financial assets by instrument and by counterparty sector: non-trading non-derivative financial assets measured at a cost-based method",
      "abstract": false,
      "parent": null,
+     "group": "FinRep - Part 1 (GAAP only)",
      "cells": 260,
      "rules": 75
     },
@@ -146,6 +162,7 @@
      "name": "Breakdown of financial assets by instrument and by counterparty sector: other non-trading non-derivative financial assets",
      "abstract": false,
      "parent": null,
+     "group": "FinRep - Part 1 (GAAP only)",
      "cells": 260,
      "rules": 100
     },
@@ -154,6 +171,7 @@
      "name": "Breakdown of non-trading loans and advances by product: Loans and advances other than held for trading, trading or held for sale assets by product",
      "abstract": false,
      "parent": null,
+     "group": "FinRep - Part 1",
      "cells": 91,
      "rules": 37
     },
@@ -162,6 +180,7 @@
      "name": "Breakdown of loans and advances other than held for trading, trading or held for sale assets to non-financial corporations by NACE codes",
      "abstract": false,
      "parent": null,
+     "group": "FinRep - Part 1",
      "cells": 120,
      "rules": 22
     },
@@ -170,6 +189,7 @@
      "name": "Financial assets subject to impairment that are past due",
      "abstract": false,
      "parent": null,
+     "group": "FinRep - Part 1",
      "cells": 312,
      "rules": 61
     },
@@ -178,6 +198,7 @@
      "name": "Financial assets subject to impairment that are past due under national GAAP",
      "abstract": false,
      "parent": null,
+     "group": "FinRep - Part 1 (GAAP only)",
      "cells": 156,
      "rules": 7
     },
@@ -185,13 +206,15 @@
      "code": "F_08.01",
      "name": "Breakdown of financial liabilities by product and by counterparty sector",
      "abstract": true,
-     "parent": null
+     "parent": null,
+     "group": "Weitere Meldebögen"
     },
     {
      "code": "F_08.01.a",
      "name": "Breakdown of financial liabilities by product and by counterparty (a)",
      "abstract": false,
      "parent": "F_08.01",
+     "group": "FinRep - Part 1",
      "cells": 315,
      "rules": 56
     },
@@ -200,6 +223,7 @@
      "name": "Breakdown of financial liabilities by product and by counterparty (b)",
      "abstract": false,
      "parent": "F_08.01",
+     "group": "FinRep - Part 1",
      "cells": 7,
      "rules": 9
     },
@@ -208,6 +232,7 @@
      "name": "Subordinated liabilities",
      "abstract": false,
      "parent": null,
+     "group": "FinRep - Part 1",
      "cells": 9,
      "rules": 10
     },
@@ -216,6 +241,7 @@
      "name": "Off-balance sheet exposures under national GAAP: Loan commitments, financial guarantees and other commitments given",
      "abstract": false,
      "parent": null,
+     "group": "FinRep - Part 1 (GAAP only)",
      "cells": 48,
      "rules": 35
     },
@@ -224,6 +250,7 @@
      "name": "Off-balance sheet exposures : Loan commitments, financial guarantees and other commitments given",
      "abstract": false,
      "parent": null,
+     "group": "FinRep - Part 1",
      "cells": 288,
      "rules": 76
     },
@@ -232,6 +259,7 @@
      "name": "Loan commitments, financial guarantees and other commitments received",
      "abstract": false,
      "parent": null,
+     "group": "FinRep - Part 1",
      "cells": 42,
      "rules": 10
     },
@@ -240,6 +268,7 @@
      "name": "Derivatives: Trading and economic hedges",
      "abstract": false,
      "parent": null,
+     "group": "FinRep - Part 1",
      "cells": 264,
      "rules": 25
     },
@@ -248,6 +277,7 @@
      "name": "Derivatives - Hedge accounting: Breakdown by type of risk and type of hedge",
      "abstract": false,
      "parent": null,
+     "group": "FinRep - Part 1",
      "cells": 212,
      "rules": 22
     },
@@ -256,6 +286,7 @@
      "name": "Derivatives - Hedge accounting under National GAAP: Breakdown by type of risk",
      "abstract": false,
      "parent": null,
+     "group": "FinRep - Part 1 (GAAP only)",
      "cells": 320,
      "rules": 22
     },
@@ -264,6 +295,7 @@
      "name": "Non-derivative hedging instruments: Breakdown by accounting portfolio and type of hedge",
      "abstract": false,
      "parent": null,
+     "group": "FinRep - Part 1",
      "cells": 24,
      "rules": 2
     },
@@ -272,6 +304,7 @@
      "name": "Non-derivative hedging instruments under national GAAP: breakdown by accounting portfolio",
      "abstract": false,
      "parent": null,
+     "group": "FinRep - Part 1 (GAAP only)",
      "cells": 8,
      "rules": 1
     },
@@ -280,6 +313,7 @@
      "name": "Hedged items in fair value hedges",
      "abstract": false,
      "parent": null,
+     "group": "FinRep - Part 1",
      "cells": 105,
      "rules": 5
     },
@@ -288,6 +322,7 @@
      "name": "Movements in allowances for credit losses and impairment of equity instruments under national GAAP",
      "abstract": false,
      "parent": null,
+     "group": "FinRep - Part 1 (GAAP only)",
      "cells": 250,
      "rules": 8
     },
@@ -295,13 +330,15 @@
      "code": "F_12.01",
      "name": "Movements in allowances and provisions for credit losses",
      "abstract": true,
-     "parent": null
+     "parent": null,
+     "group": "Weitere Meldebögen"
     },
     {
      "code": "F_12.01.a",
      "name": "Movements in allowances and provisions for credit losses (I)",
      "abstract": false,
      "parent": "F_12.01",
+     "group": "FinRep - Part 1",
      "cells": 828,
      "rules": 32
     },
@@ -310,6 +347,7 @@
      "name": "Movements in allowances and provisions for credit losses (II)",
      "abstract": false,
      "parent": "F_12.01",
+     "group": "FinRep - Part 1",
      "cells": 66,
      "rules": 9
     },
@@ -318,6 +356,7 @@
      "name": "Transfers between impairment stages (gross basis presentation)",
      "abstract": false,
      "parent": null,
+     "group": "FinRep - Part 1",
      "cells": 90,
      "rules": 5
     },
@@ -326,6 +365,7 @@
      "name": "Breakdown of collateral and guarantees by loans and advances other than held for trading",
      "abstract": false,
      "parent": null,
+     "group": "FinRep - Part 1",
      "cells": 80,
      "rules": 26
     },
@@ -333,13 +373,15 @@
      "code": "F_13.02.1",
      "name": "Collateral obtained by taking possession during the period (held at the reference date)",
      "abstract": true,
-     "parent": null
+     "parent": null,
+     "group": "Weitere Meldebögen"
     },
     {
      "code": "F_13.02.1.a",
      "name": "Collateral obtained by taking possession during the period (held at the reference date) (I)",
      "abstract": false,
      "parent": "F_13.02.1",
+     "group": "FinRep - Part 1",
      "cells": 24,
      "rules": 8
     },
@@ -348,6 +390,7 @@
      "name": "Collateral obtained by taking possession during the period (held at the reference date) (II)",
      "abstract": false,
      "parent": "F_13.02.1",
+     "group": "FinRep - Part 1",
      "cells": 12,
      "rules": 4
     },
@@ -355,13 +398,15 @@
      "code": "F_13.03.1",
      "name": "Collateral obtained by taking possession accumulated",
      "abstract": true,
-     "parent": null
+     "parent": null,
+     "group": "Weitere Meldebögen"
     },
     {
      "code": "F_13.03.1.a",
      "name": "Collateral obtained by taking possession accumulated (I)",
      "abstract": false,
      "parent": "F_13.03.1",
+     "group": "FinRep - Part 1",
      "cells": 24,
      "rules": 8
     },
@@ -370,6 +415,7 @@
      "name": "Collateral obtained by taking possession accumulated (II)",
      "abstract": false,
      "parent": "F_13.03.1",
+     "group": "FinRep - Part 1",
      "cells": 12,
      "rules": 5
     },
@@ -378,6 +424,7 @@
      "name": "Fair value hierarchy: financial instruments at fair value",
      "abstract": false,
      "parent": null,
+     "group": "FinRep - Part 1",
      "cells": 384,
      "rules": 86
     },
@@ -385,13 +432,15 @@
      "code": "F_15.00",
      "name": "Financial assets pledged as collateral: derecognition and financial liabilities associated with transferred financial assets",
      "abstract": true,
-     "parent": null
+     "parent": null,
+     "group": "Weitere Meldebögen"
     },
     {
      "code": "F_15.00.a",
      "name": "Derecognition and financial liabilities associated with transferred financial assets: Equity instruments, debt securities, loans and advances",
      "abstract": false,
      "parent": "F_15.00",
+     "group": "FinRep - Part 1",
      "cells": 280,
      "rules": 72
     },
@@ -400,6 +449,7 @@
      "name": "Derecognition and financial liabilities associated with transferred financial assets: Derivatives, Deposits, Debt securities issued, Other financial liabilities",
      "abstract": false,
      "parent": "F_15.00",
+     "group": "FinRep - Part 1",
      "cells": 160,
      "rules": 24
     },
@@ -408,6 +458,7 @@
      "name": "Breakdown of selected statement of profit or loss items: Interest income and expenses by instrument and counterparty sector(a)",
      "abstract": false,
      "parent": null,
+     "group": "FinRep - Part 1",
      "cells": 64,
      "rules": 9
     },
@@ -416,6 +467,7 @@
      "name": "Breakdown of selected statement of profit or loss items: Gains or losses on derecognition of financial assets and liabilities not measured at fair value through profit or loss by instrument",
      "abstract": false,
      "parent": null,
+     "group": "FinRep - Part 1",
      "cells": 7,
      "rules": 2
     },
@@ -424,6 +476,7 @@
      "name": "Breakdown of selected statement of profit or loss items: Gains or losses on financial assets and liabilities held for trading and trading financial assets and trading financial liabilities by instrument",
      "abstract": false,
      "parent": null,
+     "group": "FinRep - Part 1",
      "cells": 20,
      "rules": 3
     },
@@ -432,6 +485,7 @@
      "name": "Breakdown of selected statement of profit or loss items: Gains or losses on financial assets and liabilities held for trading and trading financial assets and trading financial liabilities by risk",
      "abstract": false,
      "parent": null,
+     "group": "FinRep - Part 1",
      "cells": 14,
      "rules": 5
     },
@@ -440,6 +494,7 @@
      "name": "Breakdown of selected statement of profit or loss items: Gains or losses on non-trading financial assets mandatorily at fair value through profit or loss by instrument",
      "abstract": false,
      "parent": null,
+     "group": "FinRep - Part 1",
      "cells": 5,
      "rules": 2
     },
@@ -448,6 +503,7 @@
      "name": "Breakdown of selected statement of profit or loss items: Gains or losses on financial assets and liabilities designated at fair value through profit or loss by instrument",
      "abstract": false,
      "parent": null,
+     "group": "FinRep - Part 1",
      "cells": 32,
      "rules": 4
     },
@@ -456,6 +512,7 @@
      "name": "Breakdown of selected statement of profit or loss items: Gains and losses from hedge accounting",
      "abstract": false,
      "parent": null,
+     "group": "FinRep - Part 1",
      "cells": 5,
      "rules": 0
     },
@@ -463,13 +520,15 @@
      "code": "F_16.07",
      "name": "Impairment on financial and non-financial assets",
      "abstract": true,
-     "parent": null
+     "parent": null,
+     "group": "Weitere Meldebögen"
     },
     {
      "code": "F_16.07.a",
      "name": "Breakdown of selected statement of profit or loss items: Impairment on non-financial assets (a)",
      "abstract": false,
      "parent": "F_16.07",
+     "group": "FinRep - Part 1",
      "cells": 22,
      "rules": 7
     },
@@ -478,6 +537,7 @@
      "name": "Breakdown of selected statement of profit or loss items: Impairment on non-financial assets (b)",
      "abstract": false,
      "parent": "F_16.07",
+     "group": "FinRep - Part 1",
      "cells": 11,
      "rules": 3
     },
@@ -486,6 +546,7 @@
      "name": "Breakdown of selected statement of profit or loss items: Other administrative expenses",
      "abstract": false,
      "parent": null,
+     "group": "FinRep - Part 1",
      "cells": 12,
      "rules": 3
     },
@@ -494,6 +555,7 @@
      "name": "Reconciliation between IFRS and CRR scope of consolidation: Assets",
      "abstract": false,
      "parent": null,
+     "group": "FinRep - Part 1",
      "cells": 60,
      "rules": 23
     },
@@ -502,6 +564,7 @@
      "name": "Reconciliation between IFRS and CRR scope of consolidation: Off-balance sheet exposures - loan commitments, financial guarantees and other commitments given",
      "abstract": false,
      "parent": null,
+     "group": "FinRep - Part 1",
      "cells": 4,
      "rules": 1
     },
@@ -510,6 +573,7 @@
      "name": "Reconciliation between IFRS and CRR scope of consolidation: Liabilities",
      "abstract": false,
      "parent": null,
+     "group": "FinRep - Part 1",
      "cells": 52,
      "rules": 12
     },
@@ -517,13 +581,15 @@
      "code": "F_18.00",
      "name": "(NPE) Information on performing and non-performing exposures",
      "abstract": true,
-     "parent": null
+     "parent": null,
+     "group": "Weitere Meldebögen"
     },
     {
      "code": "F_18.00.a",
      "name": "Information on performing and non-performing exposures (I)",
      "abstract": false,
      "parent": "F_18.00",
+     "group": "FinRep - Part 1",
      "cells": 1140,
      "rules": 335
     },
@@ -532,6 +598,7 @@
      "name": "Information on performing and non-performing exposures (II)",
      "abstract": false,
      "parent": "F_18.00",
+     "group": "FinRep - Part 1",
      "cells": 1343,
      "rules": 301
     },
@@ -540,6 +607,7 @@
      "name": "Information on performing and non-performing exposures (III)",
      "abstract": false,
      "parent": "F_18.00",
+     "group": "FinRep - Part 1",
      "cells": 158,
      "rules": 84
     },
@@ -548,6 +616,7 @@
      "name": "Information on performing and non-performing exposures (IV)",
      "abstract": false,
      "parent": "F_18.00",
+     "group": "FinRep - Part 1",
      "cells": 158,
      "rules": 84
     },
@@ -556,6 +625,7 @@
      "name": "Information on performing and non-performing exposures (V)",
      "abstract": false,
      "parent": "F_18.00",
+     "group": "FinRep - Part 1",
      "cells": 220,
      "rules": 49
     },
@@ -564,6 +634,7 @@
      "name": "Inflows and outflows of non-performing exposures - loans and advances by counterparty sector",
      "abstract": false,
      "parent": null,
+     "group": "FinRep - Part 1",
      "cells": 30,
      "rules": 14
     },
@@ -571,13 +642,15 @@
      "code": "F_18.02",
      "name": "Commercial Real Estate (CRE) loans and additional information on loans secured by immovable property",
      "abstract": true,
-     "parent": null
+     "parent": null,
+     "group": "Weitere Meldebögen"
     },
     {
      "code": "F_18.02.a",
      "name": "Commercial Real Estate (CRE) loans and additional information on loans secured by immovable property (I)",
      "abstract": false,
      "parent": "F_18.02",
+     "group": "FinRep - Part 1",
      "cells": 300,
      "rules": 61
     },
@@ -586,6 +659,7 @@
      "name": "Commercial Real Estate (CRE) loans and additional information on loans secured by immovable property (II)",
      "abstract": false,
      "parent": "F_18.02",
+     "group": "FinRep - Part 1",
      "cells": 20,
      "rules": 9
     },
@@ -594,6 +668,7 @@
      "name": "Commercial Real Estate (CRE) loans and additional information on loans secured by immovable property (III)",
      "abstract": false,
      "parent": "F_18.02",
+     "group": "FinRep - Part 1",
      "cells": 20,
      "rules": 7
     },
@@ -601,13 +676,15 @@
      "code": "F_19.00",
      "name": "Information on forborne exposures",
      "abstract": true,
-     "parent": null
+     "parent": null,
+     "group": "Weitere Meldebögen"
     },
     {
      "code": "F_19.00.a",
      "name": "Information on forborne exposures (I)",
      "abstract": false,
      "parent": "F_19.00",
+     "group": "FinRep - Part 1",
      "cells": 627,
      "rules": 114
     },
@@ -616,6 +693,7 @@
      "name": "Information on forborne exposures (II)",
      "abstract": false,
      "parent": "F_19.00",
+     "group": "FinRep - Part 1",
      "cells": 290,
      "rules": 82
     },
@@ -624,6 +702,7 @@
      "name": "Information on forborne exposures (III)",
      "abstract": false,
      "parent": "F_19.00",
+     "group": "FinRep - Part 1",
      "cells": 116,
      "rules": 72
     },
@@ -632,6 +711,7 @@
      "name": "Information on forborne exposures (IV)",
      "abstract": false,
      "parent": "F_19.00",
+     "group": "FinRep - Part 1",
      "cells": 13,
      "rules": 13
     },
@@ -640,6 +720,7 @@
      "name": "Information on forborne exposures (V)",
      "abstract": false,
      "parent": "F_19.00",
+     "group": "FinRep - Part 1",
      "cells": 114,
      "rules": 71
     },
@@ -648,6 +729,7 @@
      "name": "Geographical breakdown of assets by location of the activities",
      "abstract": false,
      "parent": null,
+     "group": "FinRep - Part 2",
      "cells": 110,
      "rules": 66
     },
@@ -656,6 +738,7 @@
      "name": "Geographical breakdown of liabilities by location of the activities",
      "abstract": false,
      "parent": null,
+     "group": "FinRep - Part 2",
      "cells": 66,
      "rules": 38
     },
@@ -664,6 +747,7 @@
      "name": "Geographical breakdown of main income statement items by location of the activities",
      "abstract": false,
      "parent": null,
+     "group": "FinRep - Part 2",
      "cells": 74,
      "rules": 40
     },
@@ -672,6 +756,7 @@
      "name": "Geographical breakdown of assets by residence of the counterparty",
      "abstract": false,
      "parent": null,
+     "group": "FinRep - Part 2",
      "cells": 200,
      "rules": 149
     },
@@ -679,13 +764,15 @@
      "code": "F_20.05",
      "name": "Geographical breakdown of off-balance sheet exposures by residence of the counterparty",
      "abstract": true,
-     "parent": null
+     "parent": null,
+     "group": "Weitere Meldebögen"
     },
     {
      "code": "F_20.05.a",
      "name": "Geographical breakdown of off-balance sheet exposures by residence of the counterparty (a)",
      "abstract": false,
      "parent": "F_20.05",
+     "group": "FinRep - Part 2",
      "cells": 12,
      "rules": 18
     },
@@ -694,6 +781,7 @@
      "name": "Geographical breakdown of off-balance sheet items subject to credit risk by residence of the counterparty (b)",
      "abstract": false,
      "parent": "F_20.05",
+     "group": "FinRep - Part 2",
      "cells": 3,
      "rules": 5
     },
@@ -702,6 +790,7 @@
      "name": "Geographical breakdown of liabilities by residence of the counterparty",
      "abstract": false,
      "parent": null,
+     "group": "FinRep - Part 2",
      "cells": 13,
      "rules": 16
     },
@@ -710,6 +799,7 @@
      "name": "Geographical breakdown by residence of the counterparty of loans and advances other than held for trading to non-financial corporations by NACE codes",
      "abstract": false,
      "parent": null,
+     "group": "FinRep - Part 2",
      "cells": 100,
      "rules": 3
     },
@@ -718,6 +808,7 @@
      "name": "Tangible and intangible assets: assets subject to operating lease",
      "abstract": false,
      "parent": null,
+     "group": "FinRep - Part 2",
      "cells": 9,
      "rules": 14
     },
@@ -726,6 +817,7 @@
      "name": "Fee and commission income and expenses by activity",
      "abstract": false,
      "parent": null,
+     "group": "FinRep - Part 2",
      "cells": 48,
      "rules": 6
     },
@@ -734,6 +826,7 @@
      "name": "Assets involved in the services provided",
      "abstract": false,
      "parent": null,
+     "group": "FinRep - Part 2",
      "cells": 16,
      "rules": 4
     },
@@ -742,6 +835,7 @@
      "name": "Loans and advances: Number of instruments",
      "abstract": false,
      "parent": null,
+     "group": "FinRep - Part 2",
      "cells": 357,
      "rules": 38
     },
@@ -750,6 +844,7 @@
      "name": "Loans and advances: Additional information on gross carrying amounts",
      "abstract": false,
      "parent": null,
+     "group": "FinRep - Part 2",
      "cells": 697,
      "rules": 71
     },
@@ -758,6 +853,7 @@
      "name": "Loans and advances collateralised by immovable property: Breakdown by LTV ratios",
      "abstract": false,
      "parent": null,
+     "group": "FinRep - Part 2",
      "cells": 340,
      "rules": 58
     },
@@ -766,6 +862,7 @@
      "name": "Loans and advances: Additional information on accumulated impairments and accumulated negative changes in fair value due to credit risk",
      "abstract": false,
      "parent": null,
+     "group": "FinRep - Part 2",
      "cells": 340,
      "rules": 52
     },
@@ -774,6 +871,7 @@
      "name": "Loans and advances: Collateral received and financial guarantees received",
      "abstract": false,
      "parent": null,
+     "group": "FinRep - Part 2",
      "cells": 391,
      "rules": 24
     },
@@ -782,6 +880,7 @@
      "name": "Loans and advances: Accumulated partial write-offs",
      "abstract": false,
      "parent": null,
+     "group": "FinRep - Part 2",
      "cells": 119,
      "rules": 15
     },
@@ -790,6 +889,7 @@
      "name": "Loans and advances: Inflows and outflows of non-performing exposures",
      "abstract": false,
      "parent": null,
+     "group": "FinRep - Part 2",
      "cells": 224,
      "rules": 21
     },
@@ -798,6 +898,7 @@
      "name": "Loans and advances: Flow of impairments and accumulated negative changes in fair value due to credit risk on non-performing exposures",
      "abstract": false,
      "parent": null,
+     "group": "FinRep - Part 2",
      "cells": 49,
      "rules": 18
     },
@@ -806,6 +907,7 @@
      "name": "Loans and advances: Write-offs of non-performing exposures during the period",
      "abstract": false,
      "parent": null,
+     "group": "FinRep - Part 2",
      "cells": 14,
      "rules": 7
     },
@@ -813,13 +915,15 @@
      "code": "F_25.01",
      "name": "Collateral obtained by taking possession other than collateral classified as Property Plant and Equipment (PP&E): Inflows and outflows",
      "abstract": true,
-     "parent": null
+     "parent": null,
+     "group": "Weitere Meldebögen"
     },
     {
      "code": "F_25.01.a",
      "name": "Collateral obtained by taking possession other than collateral classified as Property Plant and Equipment (PP&E): Inflows and outflows (I)",
      "abstract": false,
      "parent": "F_25.01",
+     "group": "FinRep - Part 2",
      "cells": 90,
      "rules": 13
     },
@@ -828,6 +932,7 @@
      "name": "Collateral obtained by taking possession other than collateral classified as Property Plant and Equipment (PP&E): Inflows and outflows (II)",
      "abstract": false,
      "parent": "F_25.01",
+     "group": "FinRep - Part 2",
      "cells": 10,
      "rules": 5
     },
@@ -836,6 +941,7 @@
      "name": "Collateral obtained by taking possession other than collateral classified as Property Plant and Equipment (PP&E): Inflows and outflows (III)",
      "abstract": false,
      "parent": "F_25.01",
+     "group": "FinRep - Part 2",
      "cells": 1,
      "rules": 1
     },
@@ -844,6 +950,7 @@
      "name": "Collateral obtained by taking possession other than collateral classified as Property Plant and Equipment (PP&E): Inflows and outflows (IV)",
      "abstract": false,
      "parent": "F_25.01",
+     "group": "FinRep - Part 2",
      "cells": 2,
      "rules": 2
     },
@@ -851,13 +958,15 @@
      "code": "F_25.02",
      "name": "Collateral obtained by taking possession other than collateral classified as Property Plant and Equipment (PP&E): Type of collateral obtained",
      "abstract": true,
-     "parent": null
+     "parent": null,
+     "group": "Weitere Meldebögen"
     },
     {
      "code": "F_25.02.a",
      "name": "Collateral obtained by taking possession other than collateral classified as Property Plant and Equipment (PP&E): Type of collateral obtained  (I)",
      "abstract": false,
      "parent": "F_25.02",
+     "group": "FinRep - Part 2",
      "cells": 154,
      "rules": 21
     },
@@ -866,6 +975,7 @@
      "name": "Collateral obtained by taking possession other than collateral classified as Property Plant and Equipment (PP&E): Type of collateral obtained (II)",
      "abstract": false,
      "parent": "F_25.02",
+     "group": "FinRep - Part 2",
      "cells": 5,
      "rules": 2
     },
@@ -874,6 +984,7 @@
      "name": "Collateral obtained by taking possession other than collateral classified as Property Plant and Equipment (PP&E): Type of collateral obtained (III)",
      "abstract": false,
      "parent": "F_25.02",
+     "group": "FinRep - Part 2",
      "cells": 22,
      "rules": 12
     },
@@ -881,13 +992,15 @@
      "code": "F_25.03",
      "name": "Collateral obtained by taking possession classified as Property Plant and Equipment (PP&E)",
      "abstract": true,
-     "parent": null
+     "parent": null,
+     "group": "Weitere Meldebögen"
     },
     {
      "code": "F_25.03.a",
      "name": "Collateral obtained by taking possession classified as Property Plant and Equipment (PP&E) (I)",
      "abstract": false,
      "parent": "F_25.03",
+     "group": "FinRep - Part 2",
      "cells": 6,
      "rules": 2
     },
@@ -896,6 +1009,7 @@
      "name": "Collateral obtained by taking possession classified as Property Plant and Equipment (PP&E) (II)",
      "abstract": false,
      "parent": "F_25.03",
+     "group": "FinRep - Part 2",
      "cells": 4,
      "rules": 2
     },
@@ -903,13 +1017,15 @@
      "code": "F_26.00",
      "name": "Forbearance management and quality of forbearance",
      "abstract": true,
-     "parent": null
+     "parent": null,
+     "group": "Weitere Meldebögen"
     },
     {
      "code": "F_26.00.a",
      "name": "Forbearance management and quality of forbearance (I)",
      "abstract": false,
      "parent": "F_26.00",
+     "group": "FinRep - Part 2",
      "cells": 108,
      "rules": 24
     },
@@ -918,6 +1034,7 @@
      "name": "Forbearance management and quality of forbearance (II)",
      "abstract": false,
      "parent": "F_26.00",
+     "group": "FinRep - Part 2",
      "cells": 6,
      "rules": 4
     },
@@ -926,6 +1043,7 @@
      "name": "Interests in unconsolidated structured entities",
      "abstract": false,
      "parent": null,
+     "group": "FinRep - Part 3",
      "cells": 7,
      "rules": 9
     },
@@ -934,6 +1052,7 @@
      "name": "Breakdown of interests in unconsolidated structured entities by nature of the activities",
      "abstract": false,
      "parent": null,
+     "group": "FinRep - Part 3",
      "cells": 39,
      "rules": 21
     },
@@ -942,6 +1061,7 @@
      "name": "Related parties: amounts payable to and amounts receivable from",
      "abstract": false,
      "parent": null,
+     "group": "FinRep - Part 3",
      "cells": 70,
      "rules": 16
     },
@@ -950,6 +1070,7 @@
      "name": "Related parties: expenses and income generated by transactions with",
      "abstract": false,
      "parent": null,
+     "group": "FinRep - Part 3",
      "cells": 45,
      "rules": 5
     },
@@ -958,6 +1079,7 @@
      "name": "Scope of the group: “entity-by-entity”",
      "abstract": false,
      "parent": null,
+     "group": "FinRep - Part 4",
      "cells": 19,
      "rules": 5
     },
@@ -966,6 +1088,7 @@
      "name": "Scope of the group: \"instrument-by-instrument\"",
      "abstract": false,
      "parent": null,
+     "group": "FinRep - Part 4",
      "cells": 5,
      "rules": 2
     },
@@ -974,6 +1097,7 @@
      "name": "Fair value hierarchy: financial instruments at amortised cost",
      "abstract": false,
      "parent": null,
+     "group": "FinRep - Part 4",
      "cells": 76,
      "rules": 8
     },
@@ -982,6 +1106,7 @@
      "name": "Use of the Fair Value Option",
      "abstract": false,
      "parent": null,
+     "group": "FinRep - Part 4",
      "cells": 28,
      "rules": 5
     },
@@ -990,6 +1115,7 @@
      "name": "Tangible and intangible assets: carrying amount by measurement method",
      "abstract": false,
      "parent": null,
+     "group": "FinRep - Part 4",
      "cells": 22,
      "rules": 14
     },
@@ -998,6 +1124,7 @@
      "name": "Provisions",
      "abstract": false,
      "parent": null,
+     "group": "FinRep - Part 4",
      "cells": 49,
      "rules": 3
     },
@@ -1006,6 +1133,7 @@
      "name": "Components of net defined benefit plan assets and liabilities",
      "abstract": false,
      "parent": null,
+     "group": "FinRep - Part 4",
      "cells": 11,
      "rules": 3
     },
@@ -1014,6 +1142,7 @@
      "name": "Movements in defined benefit plans and employee benefits",
      "abstract": false,
      "parent": null,
+     "group": "FinRep - Part 4",
      "cells": 12,
      "rules": 3
     },
@@ -1022,6 +1151,7 @@
      "name": "Staff expenses by type of benefits",
      "abstract": false,
      "parent": null,
+     "group": "FinRep - Part 4",
      "cells": 7,
      "rules": 1
     },
@@ -1030,6 +1160,7 @@
      "name": "Staff expenses by category of remuneration and category of staff",
      "abstract": false,
      "parent": null,
+     "group": "FinRep - Part 4",
      "cells": 20,
      "rules": 3
     },
@@ -1038,6 +1169,7 @@
      "name": "Gains and losses on financial assets and liabilities designated at fair value through profit or loss by accounting portfolio",
      "abstract": false,
      "parent": null,
+     "group": "FinRep - Part 4",
      "cells": 6,
      "rules": 3
     },
@@ -1046,6 +1178,7 @@
      "name": "Gains or losses on derecognition of non-financial assets",
      "abstract": false,
      "parent": null,
+     "group": "FinRep - Part 4",
      "cells": 5,
      "rules": 2
     },
@@ -1054,6 +1187,7 @@
      "name": "Other operating income and expenses",
      "abstract": false,
      "parent": null,
+     "group": "FinRep - Part 4",
      "cells": 10,
      "rules": 4
     },
@@ -1062,6 +1196,7 @@
      "name": "Statement of changes in equity",
      "abstract": false,
      "parent": null,
+     "group": "FinRep - Part 4",
      "cells": 336,
      "rules": 32
     },
@@ -1070,6 +1205,7 @@
      "name": "Loans and advances: Average duration and recovery periods",
      "abstract": false,
      "parent": null,
+     "group": "FinRep - Part 4",
      "cells": 28,
      "rules": 8
     },
@@ -1078,6 +1214,7 @@
      "name": "Collateral obtained by taking possession accumulated (III)",
      "abstract": false,
      "parent": "F_13.03.1",
+     "group": "FinRep - Part 1",
      "cells": 2,
      "rules": 0
     },
@@ -1086,6 +1223,7 @@
      "name": "Collateral obtained by taking possession during the period (held at the reference date) (III)",
      "abstract": false,
      "parent": "F_13.02.1",
+     "group": "FinRep - Part 1",
      "cells": 2,
      "rules": 0
     }
@@ -1106,6 +1244,7 @@
      "name": "Nature of Report (AE)",
      "abstract": false,
      "parent": null,
+     "group": "AE - General Information",
      "cells": 2,
      "rules": 2
     },
@@ -1114,6 +1253,7 @@
      "name": "Asset encumbrance: Encumbrance overview - Assets",
      "abstract": false,
      "parent": null,
+     "group": "Asset Encumbrance",
      "cells": 182,
      "rules": 31
     },
@@ -1121,13 +1261,15 @@
      "code": "F_32.02",
      "name": "(AE-COL) Asset encumbrance: Encumbrance overview - Collateral",
      "abstract": true,
-     "parent": null
+     "parent": null,
+     "group": "Weitere Meldebögen"
     },
     {
      "code": "F_32.02.a",
      "name": "Asset encumbrance: Encumbrance overview - Collateral (a)",
      "abstract": false,
      "parent": "F_32.02",
+     "group": "Asset Encumbrance",
      "cells": 117,
      "rules": 38
     },
@@ -1136,6 +1278,7 @@
      "name": "Asset encumbrance: Encumbrance overview - Collateral (b)",
      "abstract": false,
      "parent": "F_32.02",
+     "group": "Asset Encumbrance",
      "cells": 4,
      "rules": 5
     },
@@ -1143,13 +1286,15 @@
      "code": "F_32.03",
      "name": "(AE-NPL) Asset encumbrance: Not pledged. Own covered bonds and ABS issued and not yet pledged",
      "abstract": true,
-     "parent": null
+     "parent": null,
+     "group": "Weitere Meldebögen"
     },
     {
      "code": "F_32.03.a",
      "name": "Asset encumbrance: Not pledged. Own covered bonds and ABS issued and not yet pledged (a)",
      "abstract": false,
      "parent": "F_32.03",
+     "group": "Asset Encumbrance",
      "cells": 6,
      "rules": 2
     },
@@ -1158,6 +1303,7 @@
      "name": "Asset encumbrance: Not pledged. Own covered bonds and ABS issued and not yet pledged (b)",
      "abstract": false,
      "parent": "F_32.03",
+     "group": "Asset Encumbrance",
      "cells": 24,
      "rules": 5
     },
@@ -1165,13 +1311,15 @@
      "code": "F_32.04",
      "name": "(AE-SOU) Asset encumbrance: Sources of encumbrance",
      "abstract": true,
-     "parent": null
+     "parent": null,
+     "group": "Weitere Meldebögen"
     },
     {
      "code": "F_32.04.a",
      "name": "Asset encumbrance: Sources of encumbrance (a)",
      "abstract": false,
      "parent": "F_32.04",
+     "group": "Asset Encumbrance",
      "cells": 34,
      "rules": 21
     },
@@ -1180,6 +1328,7 @@
      "name": "Asset encumbrance: Sources of encumbrance (b)",
      "abstract": false,
      "parent": "F_32.04",
+     "group": "Asset Encumbrance",
      "cells": 51,
      "rules": 28
     },
@@ -1187,13 +1336,15 @@
      "code": "F_33.00",
      "name": "(AE-MAT) Asset encumbrance: Maturity data",
      "abstract": true,
-     "parent": null
+     "parent": null,
+     "group": "Weitere Meldebögen"
     },
     {
      "code": "F_33.00.a",
      "name": "Asset encumbrance: Maturity data (a)",
      "abstract": false,
      "parent": "F_33.00",
+     "group": "Asset Encumbrance",
      "cells": 26,
      "rules": 4
     },
@@ -1202,6 +1353,7 @@
      "name": "Asset encumbrance: Maturity data (b)",
      "abstract": false,
      "parent": "F_33.00",
+     "group": "Asset Encumbrance",
      "cells": 13,
      "rules": 3
     },
@@ -1209,13 +1361,15 @@
      "code": "F_34.00",
      "name": "(AE-CONT) Asset encumbrance: Contingent encumbrance",
      "abstract": true,
-     "parent": null
+     "parent": null,
+     "group": "Weitere Meldebögen"
     },
     {
      "code": "F_34.00.a",
      "name": "Asset encumbrance: Contingent encumbrance (a)",
      "abstract": false,
      "parent": "F_34.00",
+     "group": "Asset Encumbrance",
      "cells": 13,
      "rules": 1
     },
@@ -1224,6 +1378,7 @@
      "name": "Asset encumbrance: Contingent encumbrance (b)",
      "abstract": false,
      "parent": "F_34.00",
+     "group": "Asset Encumbrance",
      "cells": 13,
      "rules": 9
     },
@@ -1232,6 +1387,7 @@
      "name": "Asset encumbrance: Contingent encumbrance (c)",
      "abstract": false,
      "parent": "F_34.00",
+     "group": "Asset Encumbrance",
      "cells": 13,
      "rules": 1
     },
@@ -1239,13 +1395,15 @@
      "code": "F_35.00",
      "name": "(AE-CB1) Asset encumbrance: Covered bonds issuance",
      "abstract": true,
-     "parent": null
+     "parent": null,
+     "group": "Weitere Meldebögen"
     },
     {
      "code": "F_35.00.a",
      "name": "Asset encumbrance: Covered bonds issuance (a)",
      "abstract": false,
      "parent": "F_35.00",
+     "group": "Asset Encumbrance",
      "cells": 48,
      "rules": 13
     },
@@ -1254,6 +1412,7 @@
      "name": "Asset encumbrance: Covered bonds issuance (b)",
      "abstract": false,
      "parent": "F_35.00",
+     "group": "Asset Encumbrance",
      "cells": 2,
      "rules": 1
     },
@@ -1262,6 +1421,7 @@
      "name": "Asset encumbrance: Covered bonds issuance (c)",
      "abstract": false,
      "parent": "F_35.00",
+     "group": "Asset Encumbrance",
      "cells": 8,
      "rules": 0
     },
@@ -1270,6 +1430,7 @@
      "name": "Asset encumbrance: Covered bonds issuance (d)",
      "abstract": false,
      "parent": "F_35.00",
+     "group": "Asset Encumbrance",
      "cells": 12,
      "rules": 1
     },
@@ -1277,13 +1438,15 @@
      "code": "F_36.01",
      "name": "(AE-ADV1) Asset encumbrance: Advance template for assets of the reporting institution",
      "abstract": true,
-     "parent": null
+     "parent": null,
+     "group": "Weitere Meldebögen"
     },
     {
      "code": "F_36.01.a",
      "name": "Asset encumbrance: Advance template for assets of the reporting institution (a)",
      "abstract": false,
      "parent": "F_36.01",
+     "group": "Asset Encumbrance",
      "cells": 162,
      "rules": 19
     },
@@ -1292,6 +1455,7 @@
      "name": "Asset encumbrance: Advance template for assets of the reporting institution (b)",
      "abstract": false,
      "parent": "F_36.01",
+     "group": "Asset Encumbrance",
      "cells": 162,
      "rules": 18
     },
@@ -1300,6 +1464,7 @@
      "name": "Asset encumbrance: Advance template for assets of the reporting institution (c)",
      "abstract": false,
      "parent": "F_36.01",
+     "group": "Asset Encumbrance",
      "cells": 90,
      "rules": 22
     },
@@ -1307,13 +1472,15 @@
      "code": "F_36.02",
      "name": "(AE-ADV2) Asset encumbrance: Advance template for collateral and own debt securities issued other than covered bonds or ABSs",
      "abstract": true,
-     "parent": null
+     "parent": null,
+     "group": "Weitere Meldebögen"
     },
     {
      "code": "F_36.02.a",
      "name": "Asset encumbrance: Advance template for colllateral and own debt secrities issued other than covered bonds or ABSs (a)",
      "abstract": false,
      "parent": "F_36.02",
+     "group": "Asset Encumbrance",
      "cells": 171,
      "rules": 24
     },
@@ -1322,6 +1489,7 @@
      "name": "Asset encumbrance: Advance template for colllateral and own debt secrities issued other than covered bonds or ABSs (b)",
      "abstract": false,
      "parent": "F_36.02",
+     "group": "Asset Encumbrance",
      "cells": 171,
      "rules": 18
     },
@@ -1330,6 +1498,7 @@
      "name": "Asset encumbrance: Advance template for colllateral and own debt secrities issued other than covered bonds or ABSs (c)",
      "abstract": false,
      "parent": "F_36.02",
+     "group": "Asset Encumbrance",
      "cells": 95,
      "rules": 35
     }

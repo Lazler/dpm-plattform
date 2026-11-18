@@ -8,50 +8,74 @@
 </head>
 <body>
 <header class="topbar">
-  <div class="brand"><span class="logo">▦</span> DPM Explorer <span class="rel" id="rel"></span></div>
-  <nav class="views" id="views">
-    <button data-view="sheet" class="on">Meldebögen</button>
+  <button class="brand" id="brand" title="Startseite"><span class="logo">▦</span> DPM Explorer <span class="rel" id="rel"></span></button>
+  <nav class="views" id="views" role="tablist">
+    <button data-view="start">Start</button>
+    <button data-view="sheet">Meldebögen</button>
     <button data-view="lineage">Lineage</button>
     <button data-view="dp">Datenpunkte</button>
     <button data-view="hier">Hierarchien</button>
     <button data-view="model">DPM-Struktur</button>
   </nav>
   <div class="search">
-    <input id="q" type="search" placeholder="Suche: F 01.01, „Equity instruments“, v0765_m, r0110 c0010 …" autocomplete="off">
+    <input id="q" type="search" placeholder="Suchen: Bogen, Zeile/Spalte, Regel, „F 01.01 r0110 c0010“ …  ( / )" autocomplete="off" aria-label="Globale Suche">
     <div class="results" id="results" hidden></div>
   </div>
 </header>
 
 <main>
+  <!-- ===================== Start ===================== -->
+  <section id="view-start" class="view"><div class="start" id="start"></div></section>
+
   <!-- ===================== Meldebogen-Ansicht ===================== -->
-  <section id="view-sheet" class="view on">
+  <section id="view-sheet" class="view">
     <aside class="toc" id="toc">
       <div class="modsel" id="modsel"></div>
-      <div class="cmp">
-        <label>Änderungen seit <select id="cmpsel"><option value="">– Vergleich aus –</option></select></label>
-        <label class="chk" id="cmponlywrap" hidden><input type="checkbox" id="cmponly"> nur geänderte</label>
-      </div>
-      <input id="tocfilter" type="search" placeholder="Meldebogen filtern …">
+      <div class="tocsearch"><input id="tocfilter" type="search" placeholder="Bogen filtern …" aria-label="Meldebögen filtern"></div>
+      <label class="chk tocopt" id="cmponlywrap" hidden><input type="checkbox" id="cmponly"> nur geänderte Bögen</label>
       <div class="toclist" id="toclist"></div>
     </aside>
 
     <div class="book">
+      <div class="ribbon" id="ribbon">
+        <button class="rb icon" id="toctoggle" title="Inhaltsverzeichnis ein-/ausblenden">☰</button>
+        <div class="rgrp">
+          <span class="rl">Regeln</span>
+          <div class="seg sm" id="layer">
+            <button data-l="off">Aus</button><button data-l="marker">Fehler-Marker</button><button data-l="heat">Heatmap</button>
+          </div>
+        </div>
+        <div class="rgrp">
+          <span class="rl">Änderungen seit</span>
+          <select id="cmpsel" aria-label="Release-Vergleich"><option value="">–</option></select>
+        </div>
+        <div class="rgrp grow">
+          <input id="find" type="search" placeholder="Im Bogen suchen …  (Strg+F)" aria-label="Im Bogen suchen">
+          <span class="findinfo" id="findinfo"></span>
+        </div>
+        <button class="rb icon" id="copyref" title="Zellbezug kopieren (Strg+C)" aria-label="Zellbezug kopieren">⧉</button>
+      </div>
       <div class="formulabar">
         <div class="namebox" id="namebox">–</div>
         <div class="fx">fx</div>
-        <div class="fxval" id="fxval">Zelle anklicken, um Datenpunkt, Regeln und Zusammenhänge zu sehen</div>
+        <div class="fxval" id="fxval">Zelle anklicken oder mit den Pfeiltasten wählen</div>
       </div>
       <div class="cmpbar" id="cmpbar" hidden></div>
       <div class="zbar" id="zbar" hidden></div>
-      <div class="gridwrap" id="gridwrap"><div class="empty">Meldebogen wählen …</div></div>
-      <div class="tabs" id="tabs"></div>
+      <div class="gridwrap" id="gridwrap" tabindex="0" aria-label="Meldebogen"><div class="empty">Meldebogen wählen …</div></div>
+      <div class="bottombar">
+        <div class="tabs" id="tabs"></div>
+        <div class="status" id="status"></div>
+        <div class="zoom"><button id="zminus" title="Verkleinern">−</button><span id="zval">100 %</span><button id="zplus" title="Vergrößern">+</button></div>
+      </div>
     </div>
 
     <aside class="details" id="details" hidden>
       <div class="dhead">
         <div id="dtitle"></div>
-        <button class="x" id="dclose" title="Schließen">✕</button>
+        <button class="x" id="dclose" title="Schließen (Esc)">✕</button>
       </div>
+      <div class="dtabs" id="dtabs"></div>
       <div class="dbody" id="dbody"></div>
     </aside>
   </section>
@@ -60,13 +84,16 @@
   <section id="view-lineage" class="view">
     <div class="lin-tools">
       <div class="seg" id="linmode">
-        <button data-m="tables" class="on">Tabellen-Zusammenhänge</button>
+        <button data-m="focus">Bogen im Fokus</button>
+        <button data-m="tables">Gesamtnetz</button>
         <button data-m="cell">Zell-Lineage</button>
       </div>
+      <select id="linfocus" aria-label="Bogen im Fokus"></select>
       <div class="seg" id="linmod"></div>
-      <label class="chk" id="linextwrap"><input type="checkbox" id="linext"> Tabellen anderer Module zeigen</label>
+      <label class="chk" id="linextwrap"><input type="checkbox" id="linext"> andere Module zeigen</label>
       <label class="chk" id="lindepthwrap" hidden><input type="checkbox" id="lindepth"> 2. Ebene</label>
       <span class="hint" id="linhint"></span>
+      <button class="rb" id="linfit" title="Ansicht einpassen">⤢ Einpassen</button>
     </div>
     <div class="lin-main">
       <div id="cy" class="cy"></div>
@@ -110,6 +137,7 @@
 </main>
 
 <div class="tip" id="tip" hidden></div>
+<div class="toast" id="toast" hidden></div>
 <script src="vendor/cytoscape.min.js"></script>
 <script type="module" src="app.js"></script>
 </body>

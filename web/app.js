@@ -1,15 +1,16 @@
-// DPM Explorer – Meldebögen, Regeln, Lineage und DPM-Struktur
+// DPM Explorer – Meldebögen, Regeln, Lineage, Datenpunkte, Hierarchien und DPM-Struktur
 // Reines ES-Modul ohne Build-Schritt. Daten kommen aus ./data (siehe scripts/build_data.py).
 
 const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => [...el.querySelectorAll(s)];
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const tc = (code) => (code || "").replace(/_/g, " ");
+const fmt = (n) => Number(n || 0).toLocaleString("de-DE");
 const fetchJSON = (u) => fetch(u).then((r) => { if (!r.ok) throw new Error(u + ": " + r.status); return r.json(); });
 
 const MOD_LABEL = { FINREP9: "FINREP (IFRS 9)", AE: "Asset Encumbrance" };
 const SRC_LABEL = {
-  hierarchy: "Hierarchie / Summenbeziehung", sign: "Vorzeichen", user_defined: "Fachliche Regel",
+  hierarchy: "Summenregel", sign: "Vorzeichen", user_defined: "Fachliche Regel",
   variant: "Variante", existence: "Existenz", property_constraint: "Werte-Einschränkung",
 };
 const DTYPE = {
@@ -19,120 +20,349 @@ const DTYPE = {
 };
 const SIGN = { positive: "positiv (≥ 0)", negative: "negativ (≤ 0)" };
 
+const PREF = (() => { try { return JSON.parse(localStorage.getItem("dpmx") || "{}"); } catch { return {}; } })();
+const savePref = () => { try { localStorage.setItem("dpmx", JSON.stringify(PREF)); } catch { /* ohne Speicher weiter */ } };
+
 const S = {
-  meta: null, rules: null, ruleCells: null, lineage: null, search: null,
-  mod: "FINREP9", doc: null, docs: new Map(), sheet: null, sel: null,
-  view: "sheet", ruleFilter: "all", cellRules: null,
-  diff: null, diffIdx: [], cmpTypes: new Set(["new", "opened", "greyed", "dp", "sign", "lab", "rule"]),
+  meta: null, rules: null, ruleCells: null, lineage: null, search: null, lab: null,
+  mod: PREF.mod || "FINREP9", doc: null, docs: new Map(), sheet: null, sel: null,
+  view: null, ruleFilter: "all", cellRules: null, dtab: "ov", openRules: new Set(),
+  layer: PREF.layer || "marker", zoom: PREF.zoom || 1, tocOpen: PREF.tocOpen !== false,
+  collapsed: new Set(PREF.collapsed || []),
+  diff: null, diffIdx: [], cmpTypes: new Set(["new", "opened", "greyed", "sign", "lab", "rule"]),
   dp: null, dpf: { metric: null, dims: new Map(), text: "", mods: new Set(["FINREP9", "AE"]), open: new Set() },
   hier: null, hi: { cat: null, sub: null, hit: null, filter: "" },
+  find: { hits: [], i: -1 },
+  linMode: "focus", linMods: new Set(["FINREP9", "AE"]), linRule: null, linFocus: null,
 };
 
 // ------------------------------------------------------------------ Start
-init().catch((e) => { document.body.innerHTML = `<pre style="padding:20px">Fehler beim Laden: ${esc(e.message)}\n\nBitte die App über einen Webserver öffnen (siehe README).</pre>`; });
+init().catch((e) => {
+  console.error(e);
+  document.body.innerHTML = `<pre style="padding:20px">Fehler beim Laden: ${esc(e.message)}\n\nBitte die App über einen Webserver öffnen (siehe README).</pre>`;
+});
 
 async function init() {
-  $("#gridwrap").innerHTML = '<div class="empty">Lade Daten …</div>';
+  $("#start").innerHTML = '<div class="empty">Lade Daten …</div>';
+  setViewClass("start");
   const [meta, rules, lineage, search, diffIdx] = await Promise.all([
     fetchJSON("data/meta.json"), fetchJSON("data/rules.json"), fetchJSON("data/lineage.json"), fetchJSON("data/search.json"),
     fetchJSON("data/diff/index.json").catch(() => []),
   ]);
-  S.diffIdx = diffIdx;
+  S.meta = meta; S.rules = rules.rules; S.ruleCells = rules.cells; S.lineage = lineage; S.search = search; S.diffIdx = diffIdx;
   S.lab = new Map(search.map((h) => [`${h[0]}|${h[1]}|${h[2]}`, h[3]]));
-  S.meta = meta; S.rules = rules.rules; S.ruleCells = rules.cells; S.lineage = lineage; S.search = search;
   S.cellRules = new Map();
   for (const r of Object.values(S.rules)) for (const c of r.cells) {
     if (!S.cellRules.has(c)) S.cellRules.set(c, []);
     S.cellRules.get(c).push(r.id);
   }
+  if (!S.meta.modules.some((m) => m.key === S.mod)) S.mod = S.meta.modules[0].key;
   $("#rel").textContent = `Release ${meta.release.Code}`;
   $$("#views button").forEach((b) => b.onclick = () => setView(b.dataset.view));
+  $("#brand").onclick = () => setView("start");
   $("#dclose").onclick = () => { $("#details").hidden = true; selectCell(null); };
-  initSearch();
-  initTooltips();
-  initCompare();
+  initSearch(); initTooltips(); initCompare(); initRibbon(); initKeys();
   renderModSel();
-  const h = parseHash();
-  if (h.t) { S.mod = moduleOf(h.t) || S.mod; renderModSel(); await openTable(h.t, h); }
-  else await openTable(firstTable(S.mod));
-  window.addEventListener("hashchange", async () => {
-    const x = parseHash();
-    if (x.t && (!S.doc || x.t !== S.doc.code)) { S.mod = moduleOf(x.t) || S.mod; renderModSel(); await openTable(x.t, x); }
-  });
+  window.addEventListener("popstate", route);
+  window.addEventListener("hashchange", route);
+  await route();
 }
 
-const modTables = (m) => S.meta.modules.find((x) => x.key === m).tables;
-const firstTable = (m) => modTables(m).find((t) => !t.abstract).code;
-const moduleOf = (code) => S.meta.modules.find((m) => m.tables.some((t) => t.code === code && !t.abstract))?.key;
-
+// ------------------------------------------------------------------ Navigation
+function nav(hash, push) {
+  if (location.hash === hash) return;
+  push ? history.pushState(null, "", hash) : history.replaceState(null, "", hash);
+}
+function sheetHash() {
+  if (!S.doc) return "#/";
+  const p = new URLSearchParams();
+  if (S.sel) { const c = cellCodes(S.doc, S.sel); if (c.r) p.set("r", c.r); if (c.c) p.set("c", c.c); if (c.s) p.set("s", c.s); }
+  return `#/${S.doc.code}${p.toString() ? "?" + p : ""}`;
+}
 function parseHash() {
   const m = location.hash.match(/^#\/([^?]+)(?:\?(.*))?$/);
   if (!m) return {};
   const p = new URLSearchParams(m[2] || "");
   return { t: decodeURIComponent(m[1]), r: p.get("r"), c: p.get("c"), s: p.get("s") };
 }
-function setHash() {
-  if (!S.doc) return;
-  const p = new URLSearchParams();
-  if (S.sel) { const c = cellCodes(S.doc, S.sel); if (c.r) p.set("r", c.r); if (c.c) p.set("c", c.c); if (c.s) p.set("s", c.s); }
-  const h = `#/${S.doc.code}${p.toString() ? "?" + p : ""}`;
-  if (location.hash !== h) history.replaceState(null, "", h);
+let routing = null;
+async function route() {
+  const h = location.hash;
+  if (routing === h) return;
+  routing = h;
+  try { await doRoute(h); } finally { routing = null; }
+}
+async function doRoute(h) {
+  if (h.startsWith("#/")) {
+    const x = parseHash();
+    setView("sheet", { noHash: true, skipOpen: true });
+    if (x.t && (!S.doc || x.t !== S.doc.code)) await openTable(x.t, x, { noHash: true });
+    else if (x.t && S.doc) {
+      const cell = findCell(S.doc, x);
+      if (cell && cell !== S.sel) selectCell(cell, true, true);
+    } else if (!S.doc) await openTable(firstTable(S.mod), {}, { noHash: true });
+  } else if (h.startsWith("#!")) setView(h.slice(2), { noHash: true });
+  else setView("start", { noHash: true });
 }
 
-function setView(v) {
-  S.view = v;
+function setViewClass(v) {
   $$("#views button").forEach((b) => b.classList.toggle("on", b.dataset.view === v));
   $$(".view").forEach((s) => s.classList.toggle("on", s.id === "view-" + v));
+}
+function setView(v, opt = {}) {
+  const changed = S.view !== v;
+  S.view = v;
+  setViewClass(v);
+  hideTip();
+  if (!opt.noHash) nav(v === "sheet" ? sheetHash() : `#!${v}`, changed);
+  if (v === "start") renderStart();
+  if (v === "sheet" && !S.doc && !opt.skipOpen) openTable(firstTable(S.mod), {}, { noHash: opt.noHash });
+  if (v === "sheet" && S.doc) requestAnimationFrame(applyFreeze);
   if (v === "lineage") renderLineage();
   if (v === "model") renderModel();
   if (v === "dp") renderDP();
   if (v === "hier") renderHier();
 }
 
+const modTables = (m) => S.meta.modules.find((x) => x.key === m).tables;
+const firstTable = (m) => modTables(m).find((t) => !t.abstract).code;
+const moduleOf = (code) => S.meta.modules.find((m) => m.tables.some((t) => t.code === code && !t.abstract))?.key;
+const tableName = (code) => S.meta.modules.flatMap((m) => m.tables).find((t) => t.code === code)?.name
+  || (S.lineage.nodes.find((x) => x.code === code) || {}).name || "";
+
+// ------------------------------------------------------------------ Startseite
+function renderStart() {
+  const M = S.meta;
+  const cur = M.release;
+  const idx = S.diffIdx;
+  const sumTxt = (d) => {
+    const s = d.summary, parts = [];
+    const nt = (s.tables_changed || 0) + (s.tables_new || 0);
+    if (!nt && !s.rules_add && !s.rules_del && !s.rules_chg) return "keine Änderungen an FINREP/AE";
+    if (s.tables_new) parts.push(`${s.tables_new} neue Bögen`);
+    if (s.tables_changed) parts.push(`${s.tables_changed} Bögen geändert`);
+    const r = [s.rules_add && `${s.rules_add} neu`, s.rules_chg && `${s.rules_chg} geändert`, s.rules_del && `${s.rules_del} entfallen`].filter(Boolean);
+    if (r.length) parts.push(`Regeln: ${r.join(", ")}`);
+    return parts.join(" · ");
+  };
+  const modCards = M.modules.map((m) => {
+    const tabs = m.tables.filter((t) => !t.abstract);
+    const cells = tabs.reduce((a, t) => a + (t.cells || 0), 0);
+    return `<div class="card"><h3>${esc(MOD_LABEL[m.key] || m.name)}</h3>
+      <div class="sub">${esc(m.framework)} · Modul ${esc(m.code)} · Stichtage ab ${esc(m.from)}</div>
+      <div class="kpis"><div class="kpi"><b>${fmt(tabs.length)}</b><span>Meldebögen</span></div>
+        <div class="kpi"><b>${fmt(cells)}</b><span>Zellen</span></div>
+        <div class="kpi"><b>${fmt(m.rules)}</b><span>aktive Regeln</span></div></div>
+      <div class="acts"><button class="btn" data-open="${m.key}">Meldebögen öffnen</button>
+        <button class="btn sec" data-dp="${m.key}">Datenpunkte durchsuchen</button></div></div>`;
+  }).join("");
+  const how = [
+    ["sheet", "▦", "Meldebögen wie in Excel", "Klick auf eine Zelle zeigt Datenpunkt, Dimensionen und alle Validierungsregeln – in verständlichen Sätzen."],
+    ["lineage", "⇄", "Lineage", "Wie hängen Bögen und Zellen über Regeln zusammen? Bogen in den Fokus nehmen oder einer Zelle folgen."],
+    ["dp", "⌕", "Datenpunkte", "Alle Zellen mit bestimmten Merkmalen finden, z. B. Sektor = Households und Kennzahl = Gross carrying amount."],
+    ["hier", "⌗", "Hierarchien", "Wertelisten und Summenhierarchien der Dimensionen – und die Regeln, die daraus entstehen."],
+    ["model", "◈", "DPM-Struktur", "Wie ist das Data Point Model aufgebaut? Erklärt am Beispiel deiner gewählten Zelle."],
+    ["compare", "Δ", "Release-Vergleich", "In der Meldebogen-Ansicht „Änderungen seit …“ wählen: neue Zellen, Regeln, Bezeichnungen."],
+  ].map(([v, ic, t, p]) => `<div class="card" data-go="${v}"><div class="ic">${ic}</div><b>${esc(t)}</b><p>${esc(p)}</p></div>`).join("");
+  $("#start").innerHTML = `
+    <h1>DPM Explorer</h1>
+    <p class="lead">Die EBA-Datenbank (DPM 2.0) in der Sprache der Meldebögen: Templates im Excel-Look, Datenpunkte mit ihren Dimensionen, Validierungsregeln in Worten und die Zusammenhänge zwischen allem.</p>
+    <div class="cards">${modCards}
+      <div class="card"><h3>Release ${esc(cur.Code)}</h3><div class="sub">aktuelles Release vom ${esc(cur.Date)}</div>
+        <ul class="chlist">${idx.slice(0, 4).map((d) => `<li><b>seit ${esc(d.code)}:</b> ${esc(sumTxt(d))} <button class="lnk" data-cmp="${esc(d.code)}">ansehen</button></li>`).join("")}</ul></div>
+    </div>
+    <div class="sh">Was du hier tun kannst</div>
+    <div class="how">${how}</div>
+    <div class="sh">Tastatur</div>
+    <div class="card keys"><kbd>/</kbd> Suche · <kbd>←</kbd><kbd>→</kbd><kbd>↑</kbd><kbd>↓</kbd> Zelle wechseln · <kbd>Enter</kbd> Details · <kbd>Esc</kbd> schließen ·
+      <kbd>Strg</kbd>+<kbd>F</kbd> im Bogen suchen · <kbd>Strg</kbd>+<kbd>C</kbd> Zellbezug kopieren · <kbd>Strg</kbd>+<kbd>Bild↑/↓</kbd> Blatt wechseln</div>`;
+  $$("#start [data-open]").forEach((b) => b.onclick = () => { S.mod = b.dataset.open; renderModSel(); openTable(firstTable(S.mod)); setView("sheet"); });
+  $$("#start [data-dp]").forEach((b) => b.onclick = () => { S.dpf.mods = new Set([b.dataset.dp]); setView("dp"); });
+  $$("#start [data-cmp]").forEach((b) => b.onclick = async () => { $("#cmpsel").value = b.dataset.cmp; await setCompare(b.dataset.cmp); $("#cmponly").checked = true; setView("sheet"); renderToc(); });
+  $$("#start [data-go]").forEach((c) => c.onclick = () => {
+    if (c.dataset.go === "compare") { setView("sheet"); $("#cmpsel").focus(); } else setView(c.dataset.go);
+  });
+}
+
 // ------------------------------------------------------------------ Modul & Inhaltsverzeichnis
 function renderModSel() {
   $("#modsel").innerHTML = S.meta.modules.map((m) =>
     `<button data-m="${m.key}" class="${m.key === S.mod ? "on" : ""}" title="${esc(m.name)} – ${m.tables.filter((t) => !t.abstract).length} Bögen, ${m.rules} Regeln">${esc(MOD_LABEL[m.key] || m.key)}</button>`).join("");
-  $$("#modsel button").forEach((b) => b.onclick = () => { S.mod = b.dataset.m; renderModSel(); openTable(firstTable(S.mod)); });
+  $$("#modsel button").forEach((b) => b.onclick = () => { S.mod = b.dataset.m; PREF.mod = S.mod; savePref(); renderModSel(); openTable(firstTable(S.mod)); });
   $("#tocfilter").oninput = renderToc;
+  $("#toc").hidden = !S.tocOpen;
   renderToc();
+}
+
+function changeCount(e) {
+  return Object.keys(e.cells).filter((id) => e.cells[id].some((t) => S.cmpTypes.has(t))).length
+    + e.removed.length + e.labels.length + e.rules.add.length + e.rules.del.length + e.rules.chg.length;
+}
+function changeBadge(code) {
+  const e = S.diff?.tables[code];
+  if (!e) return "";
+  if (e.st === "new") return `<span class="cb nw">neu</span>`;
+  const n = changeCount(e);
+  return n ? `<span class="cb" title="Anzahl Änderungen">${n}</span>` : "";
 }
 
 function renderToc() {
   const f = $("#tocfilter").value.trim().toLowerCase();
   const tabs = modTables(S.mod);
-  const out = [];
+  const only = S.diff && $("#cmponly").checked;
+  const match = (x) => (!only || (S.diff.tables[x.code] && (S.diff.tables[x.code].st === "new" || changeCount(S.diff.tables[x.code]))))
+    && (!f || (x.code + " " + tc(x.code) + " " + x.name).toLowerCase().includes(f));
+  const groupOf = (t) => t.abstract ? (tabs.find((k) => k.parent === t.code)?.group || t.group) : t.group;
+  const groups = [];
   for (const t of tabs) {
-    if (t.parent && tabs.some((x) => x.code === t.parent)) continue; // wird unter Elterntabelle gezeigt
-    const kids = tabs.filter((x) => x.parent === t.code);
-    const only = S.diff && $("#cmponly").checked;
-    const match = (x) => (!only || S.diff.tables[x.code]) && (!f || (x.code + " " + x.name).toLowerCase().includes(f) || tc(x.code).toLowerCase().includes(f));
+    if (t.parent && tabs.some((x) => x.code === t.parent)) continue;
+    const g = groupOf(t);
+    let grp = groups.find((x) => x.g === g);
+    if (!grp) groups.push(grp = { g, items: [], n: 0 });
     if (t.abstract) {
-      const km = kids.filter(match);
-      if (!km.length && !match(t)) continue;
-      out.push(`<div class="grp">${esc(tc(t.code))} <span>${esc(t.name)}</span></div>`);
-      for (const k of km) out.push(tocItem(k, true));
-    } else if (match(t)) out.push(tocItem(t));
+      const kids = tabs.filter((x) => x.parent === t.code && match(x));
+      if (!kids.length) continue;
+      grp.items.push(`<div class="it par" title="${esc(t.name)}"><b>${esc(tc(t.code))}</b><span class="nm">${esc(t.name)}</span></div>`);
+      for (const k of kids) grp.items.push(tocItem(k, true));
+      grp.n += kids.length;
+    } else if (match(t)) { grp.items.push(tocItem(t)); grp.n++; }
   }
-  $("#toclist").innerHTML = out.join("") || '<div class="empty">Kein Treffer</div>';
-  $$("#toclist .it").forEach((el) => el.onclick = () => openTable(el.dataset.t));
+  const html = groups.filter((g) => g.n).map((g) => {
+    const closed = S.collapsed.has(g.g) && !f;
+    return `<div class="tg ${closed ? "closed" : ""}" data-g="${esc(g.g)}"><span class="car">▾</span>${esc(g.g.replace("FinRep - ", "FINREP – ").replace(" - ", " – "))}<span class="n">${g.n}</span></div>${closed ? "" : g.items.join("")}`;
+  }).join("");
+  $("#toclist").innerHTML = html || '<div class="empty">Kein Treffer</div>';
+  $$("#toclist .it:not(.par)").forEach((el) => el.onclick = () => openTable(el.dataset.t));
+  $$("#toclist .tg").forEach((el) => el.onclick = () => {
+    S.collapsed.has(el.dataset.g) ? S.collapsed.delete(el.dataset.g) : S.collapsed.add(el.dataset.g);
+    PREF.collapsed = [...S.collapsed]; savePref(); renderToc();
+  });
 }
-const tocItem = (t, child) => `<div class="it ${child ? "child" : ""} ${S.doc?.code === t.code ? "on" : ""}" data-t="${t.code}">
-  <b>${esc(tc(t.code))}${changeBadge(t.code)}</b><span>${esc(t.name)}</span></div>`;
-function changeCount(e) {
-  return Object.keys(e.cells).length + e.removed.length + e.labels.length + e.rules.add.length + e.rules.del.length + e.rules.chg.length;
-}
-function changeBadge(code) {
-  const e = S.diff?.tables[code];
-  if (!e) return "";
-  return e.st === "new" ? `<span class="cb nw">neu</span>` : `<span class="cb" title="Anzahl Änderungen">${changeCount(e)}</span>`;
-}
+const tocItem = (t, child) => `<div class="it ${child ? "child" : ""} ${S.doc?.code === t.code ? "on" : ""}" data-t="${t.code}" title="${esc(tc(t.code) + " – " + t.name)}">
+  <b>${esc(tc(t.code))}</b><span class="nm">${esc(t.name)}</span>${changeBadge(t.code)}</div>`;
 
 function renderTabs() {
   const tabs = modTables(S.mod).filter((t) => !t.abstract);
   $("#tabs").innerHTML = tabs.map((t) => `<button data-t="${t.code}" class="${t.code === S.doc?.code ? "on" : ""}" title="${esc(t.name)}">${esc(tc(t.code))}</button>`).join("");
   $$("#tabs button").forEach((b) => b.onclick = () => openTable(b.dataset.t));
   $("#tabs .on")?.scrollIntoView({ block: "nearest", inline: "nearest" });
+}
+
+// ------------------------------------------------------------------ Ribbon, Zoom, Suche im Bogen
+function initRibbon() {
+  $("#toctoggle").onclick = () => { S.tocOpen = !S.tocOpen; PREF.tocOpen = S.tocOpen; savePref(); $("#toc").hidden = !S.tocOpen; requestAnimationFrame(applyFreeze); };
+  const setLayer = (l) => {
+    S.layer = l; PREF.layer = l; savePref();
+    $$("#layer button").forEach((b) => b.classList.toggle("on", b.dataset.l === l));
+    if (S.doc) { const sel = S.sel; renderGrid(); if (sel) selectCell(sel, false, true); }
+  };
+  $$("#layer button").forEach((b) => b.onclick = () => setLayer(b.dataset.l));
+  $$("#layer button").forEach((b) => b.classList.toggle("on", b.dataset.l === S.layer));
+  const setZoom = (z) => {
+    S.zoom = Math.max(0.7, Math.min(1.4, Math.round(z * 10) / 10)); PREF.zoom = S.zoom; savePref();
+    document.documentElement.style.setProperty("--z", S.zoom);
+    $("#zval").textContent = Math.round(S.zoom * 100) + " %";
+    requestAnimationFrame(applyFreeze);
+  };
+  $("#zminus").onclick = () => setZoom(S.zoom - 0.1);
+  $("#zplus").onclick = () => setZoom(S.zoom + 0.1);
+  setZoom(S.zoom);
+  $("#copyref").onclick = copyRef;
+  const fi = $("#find");
+  fi.oninput = () => runFind(fi.value);
+  fi.onkeydown = (e) => {
+    if (e.key === "Enter") { e.preventDefault(); stepFind(e.shiftKey ? -1 : 1); }
+    if (e.key === "Escape") { fi.value = ""; runFind(""); $("#gridwrap").focus(); }
+  };
+}
+
+function runFind(q) {
+  $$("#gridwrap .found").forEach((x) => x.classList.remove("found", "cur"));
+  S.find = { hits: [], i: -1 };
+  q = q.trim().toLowerCase();
+  if (!q) { $("#findinfo").textContent = ""; return; }
+  S.find.hits = $$("#gridwrap td.rl, #gridwrap td.h, #gridwrap td.rc, #gridwrap td.hc").filter((td) => td.textContent.toLowerCase().includes(q));
+  S.find.hits.forEach((td) => td.classList.add("found"));
+  $("#findinfo").textContent = S.find.hits.length ? `${S.find.hits.length} Treffer` : "kein Treffer";
+  stepFind(1);
+}
+function stepFind(d) {
+  const F = S.find;
+  if (!F.hits.length) return;
+  F.hits[F.i]?.classList.remove("cur");
+  F.i = (F.i + d + F.hits.length) % F.hits.length;
+  const td = F.hits[F.i];
+  td.classList.add("cur");
+  td.scrollIntoView({ block: "center", inline: "nearest" });
+  $("#findinfo").textContent = `${F.i + 1} von ${F.hits.length}`;
+}
+
+function toast(msg) {
+  const t = $("#toast");
+  t.textContent = msg; t.hidden = false;
+  clearTimeout(toast.h); toast.h = setTimeout(() => t.hidden = true, 1800);
+}
+function cellRef(doc, cell) {
+  const k = cellCodes(doc, cell);
+  return `{${tc(doc.code)}, r${k.r}, c${k.c}${k.s ? ", s" + k.s : ""}}`;
+}
+function copyRef() {
+  if (!S.sel || !S.doc) { toast("Bitte zuerst eine Zelle wählen"); return; }
+  const v = S.doc.vars[S.sel.var], k = cellCodes(S.doc, S.sel);
+  const txt = `${cellRef(S.doc, S.sel)} – ${S.lab.get(`${S.doc.code}|r|${k.r}`) || ""} / ${S.lab.get(`${S.doc.code}|c|${k.c}`) || ""}${v ? ` (${v.metric[0]})` : ""}`;
+  (navigator.clipboard?.writeText(txt) || Promise.reject()).then(() => toast("Zellbezug kopiert: " + cellRef(S.doc, S.sel)), () => toast(txt));
+}
+
+// ------------------------------------------------------------------ Tastatur
+function initKeys() {
+  document.addEventListener("keydown", (e) => {
+    const inField = /^(INPUT|SELECT|TEXTAREA)$/.test(document.activeElement?.tagName);
+    const mod = e.ctrlKey || e.metaKey;
+    if (e.key === "/" && !inField) { e.preventDefault(); $("#q").focus(); return; }
+    if (S.view !== "sheet") return;
+    if (mod && e.key.toLowerCase() === "f") { e.preventDefault(); $("#find").focus(); $("#find").select(); return; }
+    if (inField) return;
+    if (mod && e.key.toLowerCase() === "c" && !String(window.getSelection())) { e.preventDefault(); copyRef(); return; }
+    if (mod && (e.key === "PageDown" || e.key === "PageUp")) {
+      e.preventDefault();
+      const tabs = modTables(S.mod).filter((t) => !t.abstract), i = tabs.findIndex((t) => t.code === S.doc?.code);
+      const n = tabs[(i + (e.key === "PageDown" ? 1 : -1) + tabs.length) % tabs.length];
+      openTable(n.code); return;
+    }
+    const dirs = { ArrowLeft: [0, -1], ArrowRight: [0, 1], ArrowUp: [-1, 0], ArrowDown: [1, 0], Tab: [0, e.shiftKey ? -1 : 1] };
+    if (dirs[e.key]) { e.preventDefault(); moveSel(...dirs[e.key]); return; }
+    if (e.key === "Enter" && S.sel) { $("#details").hidden = false; renderDetails(S.sel); return; }
+    if (e.key === "Escape") { if (!$("#details").hidden) { $("#details").hidden = true; } return; }
+  });
+}
+
+function gridMatrix() {
+  return $$("#gridwrap tbody tr.br").map((tr) => $$("td.d", tr));
+}
+function moveSel(dr, dc) {
+  const M = gridMatrix();
+  if (!M.length) return;
+  let ri = 0, ci = 0;
+  const td = S.sel && $(`#gridwrap td.d[data-id="${S.sel.id}"]`);
+  if (td) { ri = M.findIndex((r) => r.includes(td)); ci = M[ri].indexOf(td); }
+  else { dr = 0; dc = 0; }
+  const ok = (r, c) => M[r] && M[r][c] && M[r][c].dataset.id;
+  let r = ri, c = ci;
+  if (!td) { // erste vorhandene Zelle
+    for (r = 0; r < M.length; r++) { c = M[r].findIndex((x) => x.dataset.id && !x.classList.contains("g")); if (c >= 0) break; }
+    if (r >= M.length) return;
+  } else {
+    for (let step = 0; step < 400; step++) {
+      r += dr; c += dc;
+      if (c < 0 || c >= M[0].length || r < 0 || r >= M.length) {
+        if (dc && !dr) { r += dc; c = dc > 0 ? 0 : M[0].length - 1; if (r < 0 || r >= M.length) return; }
+        else return;
+      }
+      if (ok(r, c)) break;
+    }
+    if (!ok(r, c)) return;
+  }
+  selectCell(S.doc.cById.get(+M[r][c].dataset.id), "nearest");
 }
 
 // ------------------------------------------------------------------ Tabellen laden & Layout
@@ -157,7 +387,13 @@ function prepare(doc) {
 }
 
 function cellCodes(doc, c) {
-  return { r: doc.hById.get(c.r)?.code || "", c: doc.hById.get(c.c)?.code || "", s: doc.hById.get(c.s)?.code || "" };
+  return { r: doc.hById.get(c?.r)?.code || "", c: doc.hById.get(c?.c)?.code || "", s: doc.hById.get(c?.s)?.code || "" };
+}
+function findCell(doc, t) {
+  if (!t.r && !t.c) return null;
+  const s = t.s || (doc.sheets.length ? doc.hById.get(S.sheet)?.code || "" : "");
+  return doc.byCodes.get(`${t.r || ""}|${t.c || ""}|${s}`)
+    || doc.cells.find((c) => { const k = cellCodes(doc, c); return k.r === (t.r || "") && k.c === (t.c || ""); });
 }
 function hPath(doc, id) {
   const out = [];
@@ -196,8 +432,6 @@ function buildLayout(doc) {
     for (const c of h._kids) emit(c);
   };
   for (const h of kids.get(null) || []) emit(h);
-
-  // Zeilen: Reihenfolge wie im DPM, Einrückung nach Hierarchie
   const yset = new Set(doc.Y.map((h) => h.id));
   const depth = new Map();
   for (const h of doc.Y) {
@@ -209,20 +443,25 @@ function buildLayout(doc) {
   return { cols, hrows, D, rows };
 }
 
-async function openTable(code, target = {}) {
+async function openTable(code, target = {}, opt = {}) {
   const mod = moduleOf(code);
-  if (mod && mod !== S.mod) { S.mod = mod; renderModSel(); }
+  if (mod && mod !== S.mod) { S.mod = mod; PREF.mod = mod; savePref(); renderModSel(); }
   const doc = await loadDoc(code);
+  const changed = S.doc !== doc;
   S.doc = doc; S.sel = null;
+  if (S.view !== "sheet") { S.view = "sheet"; setViewClass("sheet"); }
   S.sheet = doc.sheets.length ? (doc.sheets.find((z) => z.code === target.s) || doc.sheets[0]).id : null;
+  $("#find").value = ""; $("#findinfo").textContent = "";
   renderToc(); renderTabs(); renderZbar(); renderGrid();
   $("#toclist .on")?.scrollIntoView({ block: "nearest" });
-  let cell = null;
-  if (target.r || target.c) cell = doc.byCodes.get(`${target.r || ""}|${target.c || ""}|${target.s || (doc.sheets.length ? doc.hById.get(S.sheet).code : "")}`)
-    || doc.cells.find((c) => { const k = cellCodes(doc, c); return k.r === (target.r || "") && k.c === (target.c || ""); });
-  if (cell) selectCell(cell, true);
-  else { $("#details").hidden = true; $("#namebox").textContent = tc(doc.code); $("#fxval").textContent = doc.name; }
-  setHash();
+  const cell = findCell(doc, target);
+  if (cell) selectCell(cell, "center", true);
+  else {
+    $("#details").hidden = true;
+    $("#namebox").textContent = tc(doc.code);
+    $("#fxval").textContent = doc.name;
+  }
+  if (!opt.noHash) nav(sheetHash(), changed);
 }
 
 function renderZbar() {
@@ -237,12 +476,14 @@ function renderZbar() {
   }
   for (const k of keyZ) parts.push(`<span>🔑 Offene z-Achse: ein Blatt je <b>${esc(k.keyprop?.[0] || k.label)}</b></span>`);
   if (doc.open.rows) parts.push(`<span>🔑 Offene Tabelle: beliebig viele Zeilen, identifiziert über die Schlüsselspalten</span>`);
-  z.innerHTML = parts.join(" &nbsp; ");
+  z.innerHTML = parts.join(" ");
   const sel = $("#zsel");
   if (sel) sel.onchange = () => { S.sheet = +sel.value; S.sel = null; renderGrid(); };
 }
 
 function colName(i) { let s = ""; i++; while (i > 0) { const m = (i - 1) % 26; s = String.fromCharCode(65 + m) + s; i = Math.floor((i - 1) / 26); } return s; }
+
+function ruleSev(r, mod) { return r.sev[mod] || Object.values(r.sev)[0]; }
 
 function renderGrid() {
   const doc = S.doc, L = buildLayout(doc);
@@ -250,7 +491,7 @@ function renderGrid() {
   const D = S.diff?.tables[doc.code];
   const ruleChCells = new Set();
   if (D && S.cmpTypes.has("rule")) for (const id of [...D.rules.add, ...D.rules.chg.map((x) => x.id)]) for (const c of S.rules[id]?.cells || []) ruleChCells.add(c);
-  const labCh = new Map((D?.labels || []).filter(() => S.cmpTypes.has("lab")).map((l) => [`${l[0]}|${l[1]}`, l[2]]));
+  const labCh = new Map((S.cmpTypes.has("lab") ? D?.labels || [] : []).map((l) => [`${l[0]}|${l[1]}`, l[2]]));
   const chCls = (c) => {
     if (!D) return "";
     const t = (D.cells[c.id] || []).filter((x) => S.cmpTypes.has(x)).map((x) => "ch-" + x);
@@ -259,16 +500,16 @@ function renderGrid() {
   };
   const ncols = 2 + L.cols.length;
   const sheetKey = doc.sheets.length ? S.sheet : "";
-  let rn = 0;
+  let rn = 0, nRep = 0;
+  const allRules = new Set();
   const out = [];
-  out.push(`<table class="xl"><thead><tr><th class="corner"></th>${Array.from({ length: ncols }, (_, i) => `<th class="col" data-ci="${i}">${colName(i)}</th>`).join("")}</tr></thead><tbody>`);
+  out.push(`<table class="xl" role="grid"><thead><tr><th class="corner"></th>${Array.from({ length: ncols }, (_, i) => `<th class="col ${i === 0 ? "fa" : i === 1 ? "fb" : ""}" data-ci="${i}">${colName(i)}</th>`).join("")}</tr></thead><tbody>`);
   const row = (inner, attrs = "") => `<tr ${attrs}><th class="rn">${++rn}</th>${inner}</tr>`;
   out.push(row(`<td class="title" colspan="${ncols}">${esc(tc(doc.code))} – ${esc(doc.name)}</td>`));
   out.push(row(`<td class="subtitle" colspan="${ncols}">${esc(MOD_LABEL[doc.module] || doc.module)} · Release ${esc(S.meta.release.Code)}${doc.sheets.length ? " · Blatt: " + esc(doc.hById.get(S.sheet)?.label) : ""}</td>`));
-  out.push(row(`<td class="blank" colspan="${ncols}"></td>`));
   L.hrows.forEach((hr, d) => {
     let inner = "";
-    if (d === 0) inner += `<td class="blank" rowspan="${L.D + 1}"></td><td class="blank" rowspan="${L.D + 1}"></td>`;
+    if (d === 0) inner += `<td class="lb lb1" rowspan="${L.D + 1}"></td><td class="lb lb2" rowspan="${L.D + 1}"></td>`;
     for (const x of hr) {
       if (x.blank) inner += `<td class="h" colspan="1" rowspan="${x.rowspan}"></td>`;
       else {
@@ -276,52 +517,80 @@ function renderGrid() {
         inner += `<td class="h ${old != null ? "ch-lab" : ""}" colspan="${x.colspan}" rowspan="${x.rowspan}" title="${esc(old != null ? "Bisher: " + old : x.h.label)}">${esc(x.h.label)}</td>`;
       }
     }
-    out.push(row(inner));
+    out.push(row(inner, `class="hdr"`));
   });
-  out.push(row(L.cols.map((h) => `<td class="hc ${h.key ? "key" : ""}">${esc(h.code || "")}</td>`).join("")));
+  out.push(row(L.cols.map((h) => `<td class="hc ${h.key ? "key" : ""}">${esc(h.code || "")}</td>`).join(""), `class="hdr"`));
 
   const dataCells = (rid) => L.cols.map((h) => {
     const c = doc.cellMap.get(`${rid ?? ""}|${h.id}|${sheetKey ?? ""}`);
     if (!c) return `<td class="d g"></td>`;
     if (c.excl) return `<td class="d g ${chCls(c)}" data-id="${c.id}"></td>`;
-    const rs = c.rules.map((id) => S.rules[id]).filter(Boolean);
-    const err = rs.some((r) => Object.values(r.sev).includes("error"));
-    const mk = rs.length ? `<i class="mk ${err ? "e" : ""}"></i>` : "";
-    return `<td class="d ${c.void ? "v" : ""} ${chCls(c)}" data-id="${c.id}">${mk}</td>`;
+    nRep++;
+    c.rules.forEach((id) => allRules.add(id));
+    let cls = "", inner = "";
+    if (S.layer !== "off" && c.rules.length) {
+      const rs = c.rules.map((id) => S.rules[id]).filter(Boolean);
+      const err = rs.some((r) => ruleSev(r, doc.module) === "error");
+      if (S.layer === "marker" && err) inner = `<i class="mk"></i>`;
+      if (S.layer === "heat") {
+        const n = rs.length;
+        cls = `h${n <= 2 ? 1 : n <= 5 ? 2 : n <= 10 ? 3 : n <= 20 ? 4 : 5}${err ? " he" : ""}`;
+        inner = String(n);
+      }
+    }
+    return `<td class="d ${c.void ? "v" : ""} ${cls} ${chCls(c)}" data-id="${c.id}">${inner}</td>`;
   }).join("");
 
   if (!L.rows.length) {
-    for (let i = 0; i < 3; i++) out.push(row(`<td class="rc">…</td><td class="rl"><span class="ph">offene Zeile ${i + 1}</span></td>${dataCells(null)}`));
+    for (let i = 0; i < 3; i++) out.push(row(`<td class="rc">…</td><td class="rl"><span class="ph">offene Zeile ${i + 1}</span></td>${dataCells(null)}`, `class="br"`));
   }
   for (const r of L.rows) {
     const pad = 6 + r.depth * 16;
     const cls = r.h.abs ? "abs" : r.top ? "top" : "";
     const old = labCh.get(`r|${r.h.code}`);
-    out.push(row(`<td class="rc">${esc(r.h.code || "")}</td><td class="rl ${cls} ${old != null ? "ch-lab" : ""}" style="padding-left:${pad}px" ${old != null ? `title="Bisher: ${esc(old)}"` : ""}>${esc(r.h.label)}</td>${dataCells(r.h.id)}`, `data-r="${r.h.id}"`));
+    out.push(row(`<td class="rc">${esc(r.h.code || "")}</td><td class="rl ${cls} ${old != null ? "ch-lab" : ""}" style="padding-left:${pad}px" ${old != null ? `title="Bisher: ${esc(old)}"` : ""}>${esc(r.h.label)}</td>${dataCells(r.h.id)}`, `class="br" data-r="${r.h.id}"`));
   }
   out.push("</tbody></table>");
   renderCmpbar();
-  $("#gridwrap").innerHTML = out.join("");
-  $("#gridwrap").scrollTop = 0;
-  $("#gridwrap table").addEventListener("click", (e) => {
+  const wrap = $("#gridwrap");
+  wrap.innerHTML = out.join("");
+  wrap.scrollTop = 0; wrap.scrollLeft = 0;
+  const nErr = [...allRules].filter((id) => S.rules[id] && ruleSev(S.rules[id], doc.module) === "error").length;
+  $("#status").textContent = `${fmt(nRep)} meldepflichtige Zellen · ${fmt(allRules.size)} Regeln${nErr ? ` (${nErr} Fehler)` : ""}`;
+  requestAnimationFrame(applyFreeze);
+  const tbl = $("table", wrap);
+  tbl.addEventListener("click", (e) => {
     const td = e.target.closest("td.d[data-id]");
     if (td) selectCell(doc.cById.get(+td.dataset.id));
   });
-  $("#gridwrap table").addEventListener("mouseover", (e) => {
+  tbl.addEventListener("mouseover", (e) => {
     const td = e.target.closest("td.d[data-id]");
     if (!td) return;
     const c = doc.cById.get(+td.dataset.id), k = cellCodes(doc, c);
-    showTip(e, `${tc(doc.code)} · r${k.r} · c${k.c}${k.s ? " · s" + k.s : ""}${c.excl ? "\n(grau – nicht zu melden)" : ""}${c.rules.length ? `\n${c.rules.length} Validierungsregel(n)` : ""}`);
+    const rl = S.lab.get(`${doc.code}|r|${k.r}`) || "", cl = S.lab.get(`${doc.code}|c|${k.c}`) || "";
+    showTip(e, `r${k.r} · c${k.c}${k.s ? " · s" + k.s : ""}\n${rl}\n${cl}${c.excl ? "\n(grau – nicht zu melden)" : c.rules.length ? `\n${c.rules.length} Validierungsregel(n)` : ""}`);
   });
-  $("#gridwrap table").addEventListener("mouseout", hideTip);
+  tbl.addEventListener("mouseout", hideTip);
 }
 
+// Kopfzeilen beim vertikalen Scrollen fixieren (Zeilenspalten fixiert CSS)
+function applyFreeze() {
+  const tbl = $("#gridwrap table");
+  if (!tbl || !tbl.offsetParent) return;
+  let top = tbl.tHead.offsetHeight;
+  for (const tr of $$("tr.hdr", tbl)) {
+    for (const c of tr.children) c.style.top = top + "px";
+    top += tr.offsetHeight;
+  }
+}
+window.addEventListener("resize", () => requestAnimationFrame(applyFreeze));
+
 // ------------------------------------------------------------------ Zellauswahl & Details
-function selectCell(cell, scroll) {
+function selectCell(cell, scroll, noHash) {
   $$("#gridwrap td.sel").forEach((x) => x.classList.remove("sel"));
   $$("#gridwrap tr.sel, #gridwrap th.col.sel").forEach((x) => x.classList.remove("sel"));
   S.sel = cell;
-  setHash();
+  if (!noHash && S.view === "sheet") nav(sheetHash(), false);
   if (!cell) return;
   const doc = S.doc;
   if (cell.s && doc.sheets.length && cell.s !== S.sheet) { S.sheet = cell.s; renderZbar(); renderGrid(); }
@@ -331,145 +600,209 @@ function selectCell(cell, scroll) {
     td.parentElement.classList.add("sel");
     const ci = [...td.parentElement.children].indexOf(td) - 1;
     $(`#gridwrap th.col[data-ci="${ci}"]`)?.classList.add("sel");
-    if (scroll) td.scrollIntoView({ block: "center", inline: "center" });
+    if (scroll) scrollCellIntoView(td, scroll);
   }
   const k = cellCodes(doc, cell);
   $("#namebox").textContent = `${tc(doc.code)} · r${k.r} · c${k.c}${k.s ? " · s" + k.s : ""}`;
   const v = doc.vars[cell.var];
   $("#fxval").textContent = v ? [v.metric[0], ...v.dims.map((d) => `${d[0]}: ${d[2]}`)].join("  |  ") : (cell.excl ? "graue Zelle – nicht zu melden" : "–");
+  $("#details").hidden = false;
+  S.openRules = new Set();
   renderDetails(cell);
 }
 
-function chip(seg, curKey) {
+// Zelle sichtbar machen – unter Berücksichtigung der fixierten Kopfzeilen und Zeilenspalten
+function scrollCellIntoView(td, mode) {
+  const wrap = $("#gridwrap");
+  const tbl = $("table", wrap);
+  const hdrs = $$("tr.hdr", tbl);
+  const topFixed = tbl.tHead.offsetHeight + hdrs.reduce((a, tr) => a + tr.offsetHeight, 0);
+  const rl = $("td.rl", tbl);
+  const leftFixed = rl ? rl.offsetLeft + rl.offsetWidth : 0;
+  const r = td.getBoundingClientRect(), w = wrap.getBoundingClientRect();
+  const y = r.top - w.top, x = r.left - w.left;
+  if (mode === "center") {
+    wrap.scrollTop += y - (topFixed + (w.height - topFixed) / 2) + r.height / 2;
+    wrap.scrollLeft += x - (leftFixed + (w.width - leftFixed) / 2) + r.width / 2;
+    return;
+  }
+  if (y < topFixed) wrap.scrollTop -= topFixed - y + 4;
+  else if (y + r.height > w.height - 14) wrap.scrollTop += y + r.height - w.height + 18;
+  if (x < leftFixed) wrap.scrollLeft -= leftFixed - x + 4;
+  else if (x + r.width > w.width - 14) wrap.scrollLeft += x + r.width - w.width + 18;
+}
+
+function refHtml(seg, curKey) {
   const ref = seg.ref || {};
   const key = ref.t && ref.r && ref.c ? `${ref.t}|${ref.r}|${ref.c}` : null;
   const linkable = ref.t && moduleOf(ref.t);
-  return `<span class="chip ${key && key === curKey ? "cur" : ""} ${linkable ? "" : "nolink"}" data-t="${esc(ref.t || "")}" data-r="${esc(ref.r || "")}" data-c="${esc(ref.c || "")}" data-tip="${esc(seg.tip || "")}">${esc(seg.text)}</span>`;
+  const text = esc(seg.text).replace(/„([^„“]*) › ([^„“›]*)“/g, `„<span class="pp">$1 ›</span> $2“`);
+  return `<span class="ref ${key && key === curKey ? "cur" : ""} ${linkable ? "" : "nolink"}" data-t="${esc(ref.t || "")}" data-r="${esc(ref.r || "")}" data-c="${esc(ref.c || "")}" data-tip="${esc(seg.tip || "")}">${text}</span>`;
 }
 function verbal(segs, curKey) {
   if (!segs) return "";
-  return segs.map((s) => typeof s === "string" ? esc(s) : chip(s, curKey)).join("");
+  return segs.map((s) => typeof s === "string" ? esc(s) : refHtml(s, curKey)).join("");
+}
+const plain = (segs) => (segs || []).map((s) => typeof s === "string" ? s : s.text).join("");
+
+function ruleBody(r, curKey) {
+  return `<div class="rv">${r.verbal ? verbal(r.verbal, curKey) : "<i>Keine Verbalisierung verfügbar.</i>"}</div>
+    ${r.pre_verbal ? `<div class="pre">Wird nur geprüft, wenn gemeldet: ${verbal(r.pre_verbal)}</div>` : ""}
+    <details><summary>Technische Sicht (DPM-XL)</summary>
+      <pre class="x">${esc(r.expr)}</pre>
+      ${r.desc ? `<div><b>Beschreibung der EBA:</b> ${esc(r.desc)}</div>` : ""}
+      ${r.pre ? `<div style="margin-top:4px"><b>Vorbedingung:</b> <code class="c">${esc(r.pre)}</code></div>` : ""}
+      <div style="margin-top:4px"><b>Beteiligt:</b> ${r.tables.map((t) => esc(tc(t))).join(", ")} · ${r.cells.length} Zellen</div>
+    </details>
+    <div class="acts"><button class="lnk" data-act="lineage" data-rule="${r.id}">In Lineage anzeigen</button></div>`;
 }
 
+// vollständige Regelkarte (Seitenleisten von Lineage, Hierarchien, Änderungsliste)
 function ruleCard(r, curKey, mod) {
-  const sev = r.sev[mod] || Object.values(r.sev)[0];
-  const isErr = sev === "error";
+  const sev = ruleSev(r, mod), isErr = sev === "error";
   const other = Object.entries(r.sev).filter(([m]) => m !== mod).map(([m, s]) => `${MOD_LABEL[m] || m}: ${s === "error" ? "Fehler" : "Warnung"}`);
   return `<div class="rule ${isErr ? "e" : ""}" data-rule="${r.id}">
     <div class="rh"><b>${esc(r.code)}</b><span class="badge ${isErr ? "e" : "w"}">${isErr ? "Fehler" : "Warnung"}</span>
-      <span>${esc(SRC_LABEL[r.src] || r.src)}</span>${r.tables.length > 1 ? `<span>· ${r.tables.length} Tabellen</span>` : ""}
-      ${other.length ? `<span title="Schweregrad in anderen Modulen">· ${esc(other.join(", "))}</span>` : ""}</div>
-    <div class="rv">${r.verbal ? verbal(r.verbal, curKey) : `<i>Keine Verbalisierung verfügbar.</i>`}</div>
-    ${r.pre_verbal ? `<div class="pre">Wird nur geprüft, wenn gemeldet: ${verbal(r.pre_verbal)}</div>` : ""}
-    <details><summary>Technische Sicht (DPM-XL)</summary>
-      <pre>${esc(r.expr)}</pre>
-      ${r.desc ? `<div><b>Beschreibung der EBA:</b> ${esc(r.desc)}</div>` : ""}
-      ${r.pre ? `<div style="margin-top:4px"><b>Vorbedingung:</b> <code class="c">${esc(r.pre)}</code></div>` : ""}
-      <div style="margin-top:4px"><b>Beteiligte Tabellen:</b> ${r.tables.map((t) => esc(tc(t))).join(", ")} · ${r.cells.length} Zellen</div>
-    </details>
-    <div class="acts"><button class="lnk" data-act="lineage" data-rule="${r.id}">In Lineage anzeigen</button></div>
-  </div>`;
+      <span>${esc(SRC_LABEL[r.src] || r.src)}</span>${r.tables.length > 1 ? `<span>· ${r.tables.length} Bögen</span>` : ""}
+      ${other.length ? `<span>· ${esc(other.join(", "))}</span>` : ""}</div>${ruleBody(r, curKey)}</div>`;
+}
+
+function ruleRow(r, curKey, mod) {
+  const isErr = ruleSev(r, mod) === "error", open = S.openRules.has(r.id);
+  return `<div class="rrow ${isErr ? "e" : ""} ${open ? "open" : ""}" data-rule="${r.id}">
+    <div class="rs"><span class="dot" title="${isErr ? "Fehler" : "Warnung"}"></span><div class="sum">${esc(plain(r.verbal))}</div>
+      <div class="meta"><b>${esc(r.code)}</b><br>${esc(SRC_LABEL[r.src] || r.src)}</div></div>
+    <div class="full">${open ? ruleBody(r, curKey) : ""}</div></div>`;
 }
 
 function renderDetails(cell) {
   const doc = S.doc, k = cellCodes(doc, cell);
   const v = doc.vars[cell.var];
   const curKey = `${doc.code}|${k.r}|${k.c}`;
-  $("#details").hidden = false;
   const status = cell.excl ? `<span class="badge grey">grau – nicht zu melden</span>` : cell.void ? `<span class="badge grey">ohne Datenpunkt</span>` : `<span class="badge">meldepflichtig</span>`;
-  $("#dtitle").innerHTML = `<span class="ccode">{${esc(tc(doc.code))}, r${esc(k.r)}, c${esc(k.c)}${k.s ? ", s" + esc(k.s) : ""}}</span>${status}
-    <div style="margin-top:4px;color:#555;font-size:12px">${esc(doc.name)}</div>`;
-  const path = (id, ax) => {
-    const p = hPath(doc, id);
-    if (!p.length) return "–";
-    return `<div class="path">${p.map((h, i) => i < p.length - 1 ? `<span class="p">${esc(h.label)} ›</span> ` : `<b>${esc(h.label)}</b>`).join("")} <code class="c">${ax}${esc(p[p.length - 1].code || "")}</code></div>`;
-  };
-  const rs = cell.rules.map((id) => S.rules[id]).filter(Boolean)
-    .sort((a, b) => (b.sev[doc.module] === "error") - (a.sev[doc.module] === "error") || a.code.localeCompare(b.code));
-  const nErr = rs.filter((r) => r.sev[doc.module] === "error").length;
-  const shown = rs.filter((r) => S.ruleFilter === "all" || (S.ruleFilter === "e" ? r.sev[doc.module] === "error" : S.ruleFilter === "x" ? r.tables.length > 1 : r.sev[doc.module] !== "error"));
+  $("#dtitle").innerHTML = `<div class="ttl"><span class="ccode">${esc(cellRef(doc, cell))}</span><button class="cp" id="dcopy" title="Zellbezug kopieren">⧉</button>${status}</div>
+    <div class="tn">${esc(tc(doc.code))} – ${esc(doc.name)}</div>`;
+  $("#dcopy").onclick = copyRef;
+  const rs = cell.rules.map((id) => S.rules[id]).filter(Boolean);
+  const nErr = rs.filter((r) => ruleSev(r, doc.module) === "error").length;
+  const linked = new Map();
+  for (const r of rs) for (const t of r.tables) if (t !== doc.code) linked.set(t, (linked.get(t) || 0) + 1);
+  const chg = cellChangeHtml(cell);
+  const tabs = [["ov", "Überblick", ""], ["rules", "Regeln", rs.length ? `<span class="n ${nErr ? "e" : ""}">${rs.length}</span>` : ""],
+    ["links", "Zusammenhänge", linked.size + (cell.same?.length || 0) ? `<span class="n">${linked.size + (cell.same?.length || 0)}</span>` : ""]];
+  if (chg) tabs.push(["chg", "Änderungen", `<span class="n">Δ</span>`]);
+  if (!tabs.some((t) => t[0] === S.dtab)) S.dtab = "ov";
+  $("#dtabs").hidden = false;
+  $("#dtabs").innerHTML = tabs.map(([id, l, n]) => `<button data-t="${id}" class="${S.dtab === id ? "on" : ""}">${l}${n}</button>`).join("");
+  $$("#dtabs button").forEach((b) => b.onclick = () => { S.dtab = b.dataset.t; renderDetails(cell); });
 
   const html = [];
-  html.push(cellChangeHtml(cell));
-  html.push(`<div class="sec"><h4>Position im Meldebogen</h4><div class="kv">
-    <div class="k">Zeile</div><div>${path(cell.r, "r")}</div>
-    <div class="k">Spalte</div><div>${path(cell.c, "c")}</div>
-    ${cell.s ? `<div class="k">Blatt</div><div>${path(cell.s, "s")}</div>` : ""}
-  </div></div>`);
-
-  if (v) {
-    html.push(`<div class="sec"><h4>Datenpunkt</h4><div class="kv">
-      <div class="k">Kennzahl</div><div><b>${esc(v.metric[0])}</b> <code class="c">${esc(v.metric[1] || "")}</code></div>
-      <div class="k">Datentyp</div><div>${esc(DTYPE[v.metric[2]] || v.metric[2] || "–")}${v.enum ? ` · Werteliste <i>${esc(v.enum[1])}</i>` : ""}</div>
-      ${cell.sign ? `<div class="k">Vorzeichen</div><div>${esc(SIGN[cell.sign] || cell.sign)}</div>` : ""}
-      <div class="k">Leer erlaubt</div><div>${cell.nullable ? "ja" : "nein – Pflichtangabe"}</div>
-      <div class="k">Variable</div><div><code class="c">${esc(v.id)}</code></div>
-    </div>
-    ${v.dims.length ? `<table class="dims" style="margin-top:8px">${v.dims.map((d) =>
-      `<tr><td>${esc(d[0])} <code class="c">${esc(d[1] || "")}</code></td><td><b>${esc(d[2])}</b> <code class="c">${esc(d[3] || "")}</code>
-        <button class="lnk" data-hp="${esc(d[0])}" data-hi="${esc(d[3] || "")}" title="Wert in seiner Hierarchie zeigen" style="font-size:11px">Hierarchie</button></td></tr>`).join("")}</table>` : ""}
-    <div class="more"><button class="lnk" data-act="dpsim">Ähnliche Datenpunkte suchen</button></div>
-    </div>`);
+  if (S.dtab === "ov") {
+    const path = (id, ax) => {
+      const p = hPath(doc, id);
+      if (!p.length) return "–";
+      return `<div class="path">${p.map((h, i) => i < p.length - 1 ? `<span class="p">${esc(h.label)} ›</span> ` : `<b>${esc(h.label)}</b>`).join("")} <code class="c">${ax}${esc(p[p.length - 1].code || "")}</code></div>`;
+    };
+    html.push(`<div class="sec"><h4>Position im Meldebogen</h4><div class="kv">
+      <div class="k">Zeile</div><div>${path(cell.r, "r")}</div>
+      <div class="k">Spalte</div><div>${path(cell.c, "c")}</div>
+      ${cell.s ? `<div class="k">Blatt</div><div>${path(cell.s, "s")}</div>` : ""}</div></div>`);
+    if (v) {
+      html.push(`<div class="sec"><h4>Datenpunkt</h4><div class="kv">
+        <div class="k">Kennzahl</div><div><b>${esc(v.metric[0])}</b> <code class="c">${esc(v.metric[1] || "")}</code></div>
+        <div class="k">Datentyp</div><div>${esc(DTYPE[v.metric[2]] || v.metric[2] || "–")}${v.enum ? ` · Werteliste <i>${esc(v.enum[1])}</i>` : ""}</div>
+        ${cell.sign ? `<div class="k">Vorzeichen</div><div>${esc(SIGN[cell.sign] || cell.sign)}</div>` : ""}
+        <div class="k">Leer erlaubt</div><div>${cell.nullable ? "ja" : "nein – Pflichtangabe"}</div>
+        <div class="k">Variable</div><div><code class="c">${esc(v.id)}</code></div></div>
+        ${v.dims.length ? `<h4 style="margin-top:12px">Dimensionen <span class="n">${v.dims.length}</span></h4><table class="dims">${v.dims.map((d) =>
+          `<tr><td>${esc(d[0])}</td><td><b>${esc(d[2])}</b> <button class="hb" data-hp="${esc(d[0])}" data-hi="${esc(d[3] || "")}" title="In der Hierarchie zeigen">⌗</button><br><code class="c">${esc(d[1] || "")} = ${esc(d[3] || "")}</code></td></tr>`).join("")}</table>` : ""}
+        <button class="bigbtn" data-act="dpsim">⌕ Ähnliche Datenpunkte suchen<small>Alle Zellen mit dieser Kennzahl und diesen Merkmalen – Filter anpassbar</small></button></div>`);
+    }
+    if (rs.length) {
+      const top = rs.slice().sort((a, b) => (ruleSev(b, doc.module) === "error") - (ruleSev(a, doc.module) === "error"))[0];
+      html.push(`<div class="sec"><h4>Wichtigste Regel</h4>${ruleRow(top, curKey, doc.module)}<button class="lnk" data-tab="rules">Alle ${rs.length} Regeln ansehen</button></div>`);
+    }
+    html.push(`<div class="sec"><h4>Instructions & Rechtsgrundlagen</h4><div class="note">Noch nicht angebunden – die EBA-Datenbank enthält keine Instructions-Texte. Sie werden in einem nächsten Schritt aus den ITS-Annexen ergänzt.</div></div>`);
   }
 
-  if (cell.same?.length) {
-    html.push(`<div class="sec"><h4>Gleicher Datenpunkt auch in <span class="n">${cell.same.length}</span></h4><div class="chips">${cell.same.map((cc) => {
-      const m = cc.match(/\{(.+?), r(\w+), c(\w+)(?:, s(\w+))?\}/);
-      return m ? `<span class="chip" data-t="${m[1]}" data-r="${m[2]}" data-c="${m[3]}" data-s="${m[4] || ""}" data-tip="Dieselbe Variable wird in dieser Zelle gemeldet – Werte müssen identisch sein.">${esc(tc(m[1]))} · r${m[2]} · c${m[3]}</span>` : esc(cc);
-    }).join("")}</div></div>`);
+  if (S.dtab === "rules") {
+    const filt = (r) => S.ruleFilter === "all" || (S.ruleFilter === "e" ? ruleSev(r, doc.module) === "error" : S.ruleFilter === "w" ? ruleSev(r, doc.module) !== "error" : r.tables.length > 1);
+    const shown = rs.filter(filt).sort((a, b) => (ruleSev(b, doc.module) === "error") - (ruleSev(a, doc.module) === "error") || a.code.localeCompare(b.code));
+    html.push(`<div class="filt">${[["all", `Alle ${rs.length}`], ["e", `Fehler ${nErr}`], ["w", `Warnungen ${rs.length - nErr}`], ["x", "Tabellenübergreifend"]].map(([k2, l]) => `<button data-f="${k2}" class="${S.ruleFilter === k2 ? "on" : ""}">${l}</button>`).join("")}</div>`);
+    if (!rs.length) html.push(`<div class="hint">Keine aktiven Regeln für diese Zelle.</div>`);
+    const intra = shown.filter((r) => r.tables.length <= 1), cross = shown.filter((r) => r.tables.length > 1);
+    if (intra.length) html.push(`<div class="rgroup">Innerhalb von ${esc(tc(doc.code))} · ${intra.length}</div>${intra.map((r) => ruleRow(r, curKey, doc.module)).join("")}`);
+    if (cross.length) html.push(`<div class="rgroup">Tabellenübergreifend · ${cross.length}</div>${cross.map((r) => ruleRow(r, curKey, doc.module)).join("")}`);
+    if (rs.length && !shown.length) html.push(`<div class="hint">Kein Treffer für diesen Filter.</div>`);
   }
 
-  html.push(`<div class="sec"><h4>Validierungsregeln <span class="n">${rs.length}</span>${nErr ? `<span class="badge e">${nErr} Fehler</span>` : ""}</h4>
-    ${rs.length ? `<div class="filt">${[["all", "Alle"], ["e", "Fehler"], ["w", "Warnungen"], ["x", "Tabellenübergreifend"]].map(([k2, l]) => `<button data-f="${k2}" class="${S.ruleFilter === k2 ? "on" : ""}">${l}</button>`).join("")}</div>` : `<div class="hint">Keine aktiven Regeln für diese Zelle.</div>`}
-    ${shown.slice(0, 60).map((r) => ruleCard(r, curKey, doc.module)).join("")}
-    ${shown.length > 60 ? `<div class="hint">… und ${shown.length - 60} weitere</div>` : ""}
-  </div>`);
-
-  if (rs.length) {
-    const tabs = new Map();
-    for (const r of rs) for (const t of r.tables) if (t !== doc.code) tabs.set(t, (tabs.get(t) || 0) + 1);
-    if (tabs.size) html.push(`<div class="sec"><h4>Verknüpfte Meldebögen <span class="n">${tabs.size}</span></h4>
-      <div class="chips">${[...tabs].sort((a, b) => b[1] - a[1]).map(([t, n]) => `<span class="chip ${moduleOf(t) ? "" : "nolink"}" data-t="${esc(t)}" data-tip="${esc((S.lineage.nodes.find((x) => x.code === t) || {}).name || "")}\n${n} gemeinsame Regel(n)">${esc(tc(t))} <small>(${n})</small></span>`).join("")}</div>
-      <div class="more"><button class="lnk" data-act="celllineage">Zell-Lineage als Graph anzeigen</button></div></div>`);
+  if (S.dtab === "links") {
+    const max = Math.max(1, ...linked.values());
+    html.push(`<div class="sec"><h4>Verknüpfte Meldebögen <span class="n">${linked.size}</span></h4>
+      ${linked.size ? [...linked].sort((a, b) => b[1] - a[1]).map(([t, n]) => `<div class="nb tag-row" data-t="${esc(t)}"><div><b>${esc(tc(t))}</b> <small>${esc(tableName(t))}</small><div class="bar"><i style="width:${(n / max) * 100}%"></i></div></div><span>${n} Regel${n > 1 ? "n" : ""}</span></div>`).join("")
+        : `<div class="hint">Diese Zelle wird nur innerhalb des Bogens geprüft.</div>`}
+      <button class="bigbtn" data-act="celllineage">⇄ Zell-Lineage als Graph<small>Zelle → Regeln → verknüpfte Zellen und Bögen</small></button></div>`);
+    if (cell.same?.length) {
+      html.push(`<div class="sec"><h4>Gleicher Datenpunkt auch in <span class="n">${cell.same.length}</span></h4><div>${cell.same.map((cc) => {
+        const m = cc.match(/\{(.+?), r(\w+), c(\w+)(?:, s(\w+))?\}/);
+        return m ? `<span class="tag" data-t="${m[1]}" data-r="${m[2]}" data-c="${m[3]}" data-s="${m[4] || ""}" data-tip="${esc((S.lab.get(`${m[1]}|r|${m[2]}`) || "") + "\n" + (S.lab.get(`${m[1]}|c|${m[3]}`) || ""))}\n\nDieselbe Variable – der Wert muss identisch sein.">${esc(tc(m[1]))} · r${m[2]} · c${m[3]}</span>` : esc(cc);
+      }).join("")}</div></div>`);
+    }
   }
 
-  html.push(`<div class="sec"><h4>Instructions & Rechtsgrundlagen</h4><div class="note">Die EBA liefert in der DPM-Datenbank keine Instructions- oder Rechtsgrundlagentexte (die Tabellen <i>Document</i>, <i>Subdivision</i> und <i>Reference</i> sind leer). Diese können in einem nächsten Schritt aus den ITS-Annexen bzw. den annotierten Templates ergänzt werden.</div></div>`);
+  if (S.dtab === "chg") html.push(chg);
 
   $("#dbody").innerHTML = html.join("");
+  $("#dbody").scrollTop = 0;
   $$("#dbody .filt button").forEach((b) => b.onclick = () => { S.ruleFilter = b.dataset.f; renderDetails(cell); });
-  $$("#dbody .rule").forEach((el) => {
-    el.onmouseenter = () => highlightRule(+el.dataset.rule, true);
-    el.onmouseleave = () => highlightRule(+el.dataset.rule, false);
-  });
+  $$("#dbody [data-tab]").forEach((b) => b.onclick = () => { S.dtab = b.dataset.tab; renderDetails(cell); });
+  bindRuleRows($("#dbody"), curKey, doc.module);
   bindChips($("#dbody"));
-  $$("#dbody [data-act=lineage]").forEach((b) => b.onclick = () => { S.linRule = +b.dataset.rule; S.linMode = "cell"; setView("lineage"); });
+  $$("#dbody .tag-row").forEach((el) => el.onclick = () => { S.linMode = "focus"; S.linFocus = el.dataset.t; setView("lineage"); });
   $$("#dbody [data-act=celllineage]").forEach((b) => b.onclick = () => { S.linRule = null; S.linMode = "cell"; setView("lineage"); });
   $$("#dbody [data-hp]").forEach((b) => b.onclick = () => openHier(b.dataset.hp, b.dataset.hi));
   $$("#dbody [data-act=dpsim]").forEach((b) => b.onclick = () => dpFromCell(cell));
 }
 
+function bindRuleRows(root, curKey, mod) {
+  $$(".rrow", root).forEach((el) => {
+    const id = +el.dataset.rule;
+    el.onmouseenter = () => highlightRule(id, true);
+    el.onmouseleave = () => highlightRule(id, false);
+    $(".rs", el).onclick = () => {
+      if (S.openRules.has(id)) S.openRules.delete(id); else S.openRules.add(id);
+      el.classList.toggle("open");
+      $(".full", el).innerHTML = S.openRules.has(id) ? ruleBody(S.rules[id], curKey) : "";
+      bindChips(el); bindLineageBtns(el);
+    };
+  });
+  bindLineageBtns(root);
+}
+function bindLineageBtns(root) {
+  $$("[data-act=lineage]", root).forEach((b) => b.onclick = () => { S.linRule = +b.dataset.rule; S.linMode = "cell"; setView("lineage"); });
+}
+
 function highlightRule(id, on) {
   const r = S.rules[id];
-  if (!r) return;
+  if (!r || S.view !== "sheet") return;
   for (const c of r.cells) $(`#gridwrap td.d[data-id="${c}"]`)?.classList.toggle("hl", on);
 }
 
 function bindChips(root) {
-  $$(".chip", root).forEach((ch) => {
+  $$(".ref, .tag", root).forEach((ch) => {
     ch.onmouseenter = (e) => {
       if (ch.dataset.tip) showTip(e, ch.dataset.tip);
-      if (S.doc && ch.dataset.t === S.doc.code && ch.dataset.r && ch.dataset.c) {
-        const c = S.doc.byCodes.get(`${ch.dataset.r}|${ch.dataset.c}|${ch.dataset.s || cellCodes(S.doc, S.sel || {}).s || ""}`)
-          || S.doc.cells.find((x) => { const k = cellCodes(S.doc, x); return k.r === ch.dataset.r && k.c === ch.dataset.c; });
+      if (S.view === "sheet" && S.doc && ch.dataset.t === S.doc.code && ch.dataset.r && ch.dataset.c) {
+        const c = findCell(S.doc, { r: ch.dataset.r, c: ch.dataset.c, s: ch.dataset.s });
         if (c) $(`#gridwrap td.d[data-id="${c.id}"]`)?.classList.add("hl2");
       }
     };
     ch.onmouseleave = () => { hideTip(); $$("#gridwrap td.hl2").forEach((x) => x.classList.remove("hl2")); };
-    ch.onclick = () => {
+    ch.onclick = (e) => {
+      e.stopPropagation();
       const t = ch.dataset.t;
       if (!t || !moduleOf(t)) return;
       hideTip();
-      setView("sheet");
       openTable(t, { r: ch.dataset.r, c: ch.dataset.c, s: ch.dataset.s });
     };
   });
@@ -485,7 +818,7 @@ function showTip(e, text) {
 }
 function hideTip() { $("#tip").hidden = true; }
 
-// ------------------------------------------------------------------ Suche
+// ------------------------------------------------------------------ Globale Suche
 function initSearch() {
   const q = $("#q"), res = $("#results");
   let items = [], act = -1;
@@ -495,16 +828,16 @@ function initSearch() {
     const groups = [];
     const tabs = S.meta.modules.flatMap((m) => m.tables.filter((t) => !t.abstract).map((t) => ({ ...t, mod: m.key })));
     const norm = s.replace(/_/g, " ");
-    const cm = norm.match(/([a-z]\s?\d{2}\.\d{2}(?:\.[\w.]+)?)\D+r?(\d{3,4})\D+c?(\d{3,4})/i);
-    const T = tabs.filter((t) => (tc(t.code) + " " + t.name).toLowerCase().includes(norm)).slice(0, 8)
-      .map((t) => ({ k: "t", t: t.code, title: tc(t.code), sub: `${t.name} · ${MOD_LABEL[t.mod]}` }));
+    const cm = norm.match(/([a-z])\s?(\d{2}\.\d{2}(?:\.[\w.]+)?)\D+r?(\d{3,4})\D+c?(\d{3,4})/i);
     if (cm) {
-      const code = tabs.find((t) => tc(t.code).toLowerCase() === cm[1].replace(/\s/, " ").toLowerCase().replace(/^([a-z])(\d)/, "$1 $2"));
-      if (code) groups.push(["Zelle", [{ k: "c", t: code.code, r: cm[2].padStart(4, "0"), c: cm[3].padStart(4, "0"), title: `${tc(code.code)} · r${cm[2]} · c${cm[3]}`, sub: code.name }]]);
+      const code = tabs.find((t) => tc(t.code).toLowerCase() === `${cm[1]} ${cm[2]}`.toLowerCase());
+      if (code) groups.push(["Zelle", [{ k: "c", t: code.code, r: cm[3].padStart(4, "0"), c: cm[4].padStart(4, "0"), title: `${tc(code.code)} · r${cm[3]} · c${cm[4]}`, sub: code.name }]]);
     }
+    const T = tabs.filter((t) => (tc(t.code) + " " + t.code + " " + t.name).toLowerCase().includes(norm)).slice(0, 8)
+      .map((t) => ({ k: "t", t: t.code, title: tc(t.code), sub: `${t.name} · ${MOD_LABEL[t.mod]}` }));
     if (T.length) groups.push(["Meldebögen", T]);
     const R = Object.values(S.rules).filter((r) => r.code.toLowerCase().includes(s)).slice(0, 6)
-      .map((r) => ({ k: "r", id: r.id, title: r.code, sub: (r.verbal || []).map((x) => typeof x === "string" ? x : x.text).join("").slice(0, 140) }));
+      .map((r) => ({ k: "r", id: r.id, title: r.code, sub: plain(r.verbal).slice(0, 160) }));
     if (R.length) groups.push(["Regeln", R]);
     const H = S.search.filter((h) => h[3].toLowerCase().includes(s)).slice(0, 12)
       .map((h) => ({ k: "h", t: h[0], ax: h[1], code: h[2], title: h[3], sub: `${tc(h[0])} · ${h[1] === "r" ? "Zeile" : h[1] === "c" ? "Spalte" : "Blatt"} ${h[2]}` }));
@@ -519,20 +852,20 @@ function initSearch() {
   const go = async (it) => {
     if (!it) return;
     res.hidden = true; q.blur();
-    setView("sheet");
     if (it.k === "t") await openTable(it.t);
     if (it.k === "c") await openTable(it.t, { r: it.r, c: it.c });
     if (it.k === "h") {
       const doc = await loadDoc(it.t);
-      const c = doc.cells.find((x) => { const k = cellCodes(doc, x); return k[it.ax] === it.code && !x.excl; });
-      if (c) { const k = cellCodes(doc, c); await openTable(it.t, k); } else await openTable(it.t);
+      const c = doc.cells.find((x) => cellCodes(doc, x)[it.ax] === it.code && !x.excl);
+      await openTable(it.t, c ? cellCodes(doc, c) : {});
     }
     if (it.k === "r") {
       const r = S.rules[it.id];
       const cid = r.cells.find((c) => { const ci = S.ruleCells[c]; return ci && moduleOf(ci[0]); });
       const ci = S.ruleCells[cid];
-      if (ci) await openTable(ci[0], { r: ci[1], c: ci[2], s: ci[3] });
+      if (ci) { await openTable(ci[0], { r: ci[1], c: ci[2], s: ci[3] }); S.dtab = "rules"; S.openRules.add(r.id); renderDetails(S.sel); }
     }
+    setView("sheet");
   };
   q.oninput = run;
   q.onfocus = run;
@@ -543,29 +876,148 @@ function initSearch() {
       e.preventDefault();
       act = Math.max(0, Math.min(els.length - 1, act + (e.key === "ArrowDown" ? 1 : -1)));
       els.forEach((x, i) => x.classList.toggle("act", i === act));
+      els[act]?.scrollIntoView({ block: "nearest" });
     } else if (e.key === "Enter") go(items[act >= 0 ? act : 0]);
     else if (e.key === "Escape") { res.hidden = true; q.blur(); }
   };
 }
 
+// ------------------------------------------------------------------ Release-Vergleich
+const CH_TYPES = [
+  ["new", "Neue Zelle", "#c9ecd2"], ["opened", "Nicht mehr grau", "#c9ecd2"], ["greyed", "Neu grau", "#e7b3ad"],
+  ["dp", "Datenpunkt-Definition", "#d6e4fb"], ["sign", "Vorzeichen", "#e8d4f1"], ["lab", "Bezeichnung", "#fff1a8"],
+  ["rule", "Regel neu/geändert", "#8e44ad"],
+];
+
+function initCompare() {
+  const sel = $("#cmpsel");
+  sel.innerHTML = `<option value="">– aus –</option>` + S.diffIdx.map((d) => {
+    const n = (d.summary.tables_changed || 0) + (d.summary.tables_new || 0);
+    return `<option value="${esc(d.code)}">${esc(d.code)} (${esc(d.date)})${n ? "" : " – keine Änderung"}</option>`;
+  }).join("");
+  sel.onchange = () => setCompare(sel.value);
+  $("#cmponly").onchange = renderToc;
+}
+async function setCompare(code) {
+  S.diff = code ? await fetchJSON(`data/diff/${encodeURIComponent(code)}.json`) : null;
+  $("#cmponlywrap").hidden = !S.diff;
+  if (!S.diff) $("#cmponly").checked = false;
+  renderToc();
+  if (S.doc) {
+    const sel = S.sel;
+    renderGrid();
+    if (sel) { S.dtab = S.diff ? "chg" : "ov"; selectCell(sel, false, true); }
+  }
+}
+
+function renderCmpbar() {
+  const bar = $("#cmpbar");
+  if (!S.diff || !S.doc) { bar.hidden = true; return; }
+  bar.hidden = false;
+  const e = S.diff.tables[S.doc.code];
+  const head = `<b>Δ seit ${esc(S.diff.base.code)}</b>`;
+  const off = `<button class="lnk" id="cmpoff">Vergleich beenden</button>`;
+  if (!e) { bar.innerHTML = `${head}: in diesem Bogen keine Änderungen. ${off}`; $("#cmpoff").onclick = () => { $("#cmpsel").value = ""; setCompare(""); }; return; }
+  if (e.st === "new") { bar.innerHTML = `${head}: <b>Bogen ist neu</b> (gab es in ${esc(S.diff.base.code)} noch nicht). ${off}`; $("#cmpoff").onclick = () => { $("#cmpsel").value = ""; setCompare(""); }; return; }
+  const cnt = {};
+  for (const ts of Object.values(e.cells)) for (const t of ts) cnt[t] = (cnt[t] || 0) + 1;
+  cnt.lab = e.labels.length;
+  cnt.rule = e.rules.add.length + e.rules.chg.length;
+  const toggles = CH_TYPES.filter(([k]) => cnt[k]).map(([k, l, col]) =>
+    `<span class="t ${S.cmpTypes.has(k) ? "" : "off"}" data-k="${k}" title="${k === "dp" ? "Kennzahl oder Dimensionen des Datenpunkts geändert (beim Umbau auf DPM 2.0 sehr häufig)" : "Ein-/ausblenden"}"><i style="background:${col}"></i>${l}: ${cnt[k]}</span>`).join("");
+  const extra = [];
+  if (e.removed.length) extra.push(`${e.removed.length} Zelle(n) entfallen`);
+  if (e.rules.del.length) extra.push(`${e.rules.del.length} Regel(n) entfallen`);
+  bar.innerHTML = `${head}: ${toggles} ${extra.length ? `<span>· ${extra.join(" · ")}</span>` : ""} <button class="lnk" id="chlist">Änderungsliste</button> ${off}`;
+  $$(".t", bar).forEach((t) => t.onclick = () => {
+    S.cmpTypes.has(t.dataset.k) ? S.cmpTypes.delete(t.dataset.k) : S.cmpTypes.add(t.dataset.k);
+    const sel = S.sel; renderGrid(); renderToc(); if (sel) selectCell(sel, false, true);
+  });
+  $("#chlist").onclick = showChangeList;
+  $("#cmpoff").onclick = () => { $("#cmpsel").value = ""; setCompare(""); };
+}
+
+function dimsDiff(oldDims, newDims) {
+  const o = new Set(oldDims.map((d) => `${d[0]}: ${d[1]}`)), n = new Set(newDims.map((d) => `${d[0]}: ${d[2]}`));
+  const out = [];
+  for (const x of n) out.push(o.has(x) ? `<li>${esc(x)}</li>` : `<li class="plus">+ ${esc(x)}</li>`);
+  for (const x of o) if (!n.has(x)) out.push(`<li class="minus">− ${esc(x)}</li>`);
+  return `<ul>${out.join("")}</ul>`;
+}
+
+function cellChangeHtml(cell) {
+  if (!S.diff) return "";
+  const e = S.diff.tables[S.doc.code];
+  if (!e) return "";
+  const types = e.cells[cell.id] || [];
+  const ruleNew = e.rules.add.filter((id) => cell.rules.includes(id));
+  const ruleChg = e.rules.chg.filter((x) => cell.rules.includes(x.id));
+  if (!types.length && !ruleNew.length && !ruleChg.length && e.st !== "new") return "";
+  const L = Object.fromEntries(CH_TYPES.map(([k, l]) => [k, l]));
+  const items = [];
+  if (e.st === "new") items.push("<li>Meldebogen ist neu</li>");
+  for (const t of types) if (t !== "dp") items.push(`<li>${esc(L[t])} geändert</li>`.replace("Neue Zelle geändert", "Neue Zelle").replace("Nicht mehr grau geändert", "Nicht mehr grau").replace("Neu grau geändert", "Neu grau"));
+  let dp = "";
+  if (types.includes("dp") && e.dp[cell.id]) {
+    const v = S.doc.vars[cell.var], [om, od] = e.dp[cell.id];
+    dp = `<div style="margin-top:6px"><b>Datenpunkt-Definition geändert</b>${om !== v.metric[0] ? ` – Kennzahl: <span class="minus">${esc(om)}</span> → <span class="plus">${esc(v.metric[0])}</span>` : ""}${dimsDiff(od, v.dims)}</div>`;
+  }
+  const rl = (ids) => ids.map((id) => ruleRow(S.rules[id], null, S.doc.module)).join("");
+  return `${items.length || dp ? `<div class="sec"><h4>Änderungen seit ${esc(S.diff.base.code)}</h4><div class="note chg">${items.length ? `<ul>${items.join("")}</ul>` : ""}${dp}</div></div>` : ""}
+    ${ruleNew.length ? `<div class="sec"><h4>Neue Regeln <span class="n">${ruleNew.length}</span></h4>${rl(ruleNew)}</div>` : ""}
+    ${ruleChg.length ? `<div class="sec"><h4>Geänderte Regeln <span class="n">${ruleChg.length}</span></h4>${ruleChg.map((x) => `${ruleRow(S.rules[x.id], null, S.doc.module)}<details class="pre"><summary>bisheriger Ausdruck</summary><pre class="x">${esc(x.old)}</pre></details>`).join("")}</div>` : ""}`;
+}
+
+function showChangeList() {
+  const doc = S.doc, e = S.diff?.tables[doc.code];
+  if (!e) return;
+  $("#details").hidden = false;
+  $("#dtabs").hidden = true;
+  $("#dtitle").innerHTML = `<div class="ttl"><b>Änderungen in ${esc(tc(doc.code))}</b></div><div class="tn">Release ${esc(S.diff.base.code)} → ${esc(S.diff.cur.code)}</div>`;
+  const L = Object.fromEntries(CH_TYPES.map(([k, l]) => [k, l]));
+  const byType = {};
+  for (const [id, ts] of Object.entries(e.cells)) for (const t of ts) (byType[t] = byType[t] || []).push(+id);
+  const cellTag = (id) => {
+    const c = doc.cById.get(id); if (!c) return "";
+    const k = cellCodes(doc, c);
+    return `<span class="tag" data-t="${doc.code}" data-r="${k.r}" data-c="${k.c}" data-s="${k.s}" data-tip="${esc((S.lab.get(`${doc.code}|r|${k.r}`) || "") + "\n" + (S.lab.get(`${doc.code}|c|${k.c}`) || ""))}">r${k.r} · c${k.c}${k.s ? " · s" + k.s : ""}</span>`;
+  };
+  const h = [];
+  for (const [k] of CH_TYPES) if (byType[k]) h.push(`<div class="sec"><h4>${esc(L[k])} <span class="n">${byType[k].length}</span></h4><div>${byType[k].slice(0, 150).map(cellTag).join("")}${byType[k].length > 150 ? " …" : ""}</div></div>`);
+  if (e.removed.length) h.push(`<div class="sec"><h4>Entfallene Zellen <span class="n">${e.removed.length}</span></h4><div class="chg"><ul>${e.removed.map((x) => `<li><span class="minus">r${esc(x[0])} · c${esc(x[1])}${x[2] ? " · s" + esc(x[2]) : ""}</span><br><small>${esc(x[3])} / ${esc(x[4])}</small></li>`).join("")}</ul></div></div>`);
+  if (e.labels.length) h.push(`<div class="sec"><h4>Geänderte Bezeichnungen <span class="n">${e.labels.length}</span></h4><div class="chg"><ul>${e.labels.map((l) => `<li><code class="c">${l[0]}${esc(l[1])}</code> <span class="minus">${esc(l[2])}</span> → <span class="plus">${esc(l[3])}</span></li>`).join("")}</ul></div></div>`);
+  const mod = doc.module;
+  S.openRules = new Set();
+  if (e.rules.add.length) h.push(`<div class="sec"><h4>Neue Regeln <span class="n">${e.rules.add.length}</span></h4>${e.rules.add.map((id) => ruleRow(S.rules[id], null, mod)).join("")}</div>`);
+  if (e.rules.chg.length) h.push(`<div class="sec"><h4>Geänderte Regeln <span class="n">${e.rules.chg.length}</span></h4>${e.rules.chg.map((x) => `${ruleRow(S.rules[x.id], null, mod)}<details class="pre" style="margin:-2px 0 8px 10px"><summary>bisheriger Ausdruck</summary><pre class="x">${esc(x.old)}</pre></details>`).join("")}</div>`);
+  if (e.rules.del.length) h.push(`<div class="sec"><h4>Entfallene Regeln <span class="n">${e.rules.del.length}</span></h4>${e.rules.del.map((r) =>
+    `<div class="rule"><div class="rh"><b>${esc(r.code)}</b><span class="badge grey">entfallen</span></div><div class="rv">${r.verbal ? verbal(r.verbal) : ""}</div><details><summary>DPM-XL</summary><pre class="x">${esc(r.expr)}</pre></details></div>`).join("")}<div class="hint">Verbalisierung entfallener Regeln mit den heutigen Bezeichnungen.</div></div>`);
+  $("#dbody").innerHTML = h.join("") || '<div class="hint">Keine Änderungen.</div>';
+  $("#dbody").scrollTop = 0;
+  bindChips($("#dbody"));
+  bindRuleRows($("#dbody"), null, mod);
+}
+
 // ------------------------------------------------------------------ Lineage
-const COL = { FINREP9: "#2f6db5", AE: "#217346", ext: "#a0a0a0", err: "#c0392b", warn: "#d68910" };
+const COL = { FINREP9: "#2f6db5", AE: "#217346", ext: "#9a9a9a", err: "#c0392b", warn: "#c27c0e" };
 let cy = null;
-S.linMode = "tables"; S.linMods = new Set(["FINREP9", "AE"]);
 
 function cyStyle() {
   return [
-    { selector: "node", style: { label: "data(label)", "font-size": 10, "text-valign": "center", "text-halign": "center", color: "#fff", "background-color": "data(color)", width: "data(size)", height: "data(size)", "text-wrap": "wrap", "text-max-width": 90, "font-family": "Segoe UI, Arial" } },
-    { selector: "node.tbl", style: { shape: "round-rectangle", width: "label", height: 22, padding: 6, "font-weight": 600 } },
-    { selector: "node.ext", style: { "background-color": COL.ext } },
-    { selector: "node.cmp", style: { "background-color": "#f4f6f9", "background-opacity": 1, "border-color": "#9fb3cc", "border-width": 1, shape: "round-rectangle", label: "data(label)", "text-valign": "top", "text-halign": "center", color: "#334", "font-weight": 600, "font-size": 11, padding: 10 } },
-    { selector: "node.cell", style: { shape: "rectangle", "background-color": "#fff", "border-color": "#8a8a8a", "border-width": 1, color: "#222", width: "label", height: 18, padding: 4, "font-size": 9 } },
-    { selector: "node.cell.cur", style: { "background-color": "#fff3c4", "border-color": "#c79d00", "border-width": 2, "font-weight": 700 } },
-    { selector: "node.rule", style: { shape: "diamond", width: 26, height: 26, "background-color": "data(color)", label: "data(label)", color: "#333", "text-valign": "bottom", "text-margin-y": 3, "font-size": 9 } },
-    { selector: "node.agg", style: { shape: "round-rectangle", "background-color": "#eef1f5", "border-color": "#8a8a8a", "border-width": 1, "border-style": "dashed", color: "#333", width: "label", height: 18, padding: 4, "font-size": 9 } },
-    { selector: "edge", style: { width: "data(w)", "line-color": "#b8c4d2", "curve-style": "bezier", opacity: 0.75 } },
-    { selector: "edge.cr", style: { width: 1.2, "line-color": "#999" } },
+    { selector: "node", style: { label: "data(label)", "font-size": 11, "text-valign": "center", "text-halign": "center", color: "#fff", "background-color": "data(color)", "text-wrap": "wrap", "text-max-width": 120, "font-family": "Segoe UI, Arial" } },
+    { selector: "node.tbl", style: { shape: "round-rectangle", width: "label", height: 24, padding: 7, "font-weight": 600 } },
+    { selector: "node.center", style: { "font-size": 14, height: 34, padding: 10, "border-width": 3, "border-color": "#ffcc00" } },
+    { selector: "node.cmp", style: { "background-color": "#f4f6f9", "border-color": "#9fb3cc", "border-width": 1, shape: "round-rectangle", label: "data(label)", "text-valign": "top", "text-halign": "center", color: "#223", "font-weight": 600, "font-size": 11, padding: 8 } },
+    { selector: "node.cell", style: { shape: "round-rectangle", "background-color": "#fff", "border-color": "#8a96a3", "border-width": 1, color: "#222", width: 108, height: 20, "font-size": 10 } },
+    { selector: "node.cell.cur", style: { "background-color": "#fff3c4", "border-color": "#c79d00", "border-width": 2, "font-weight": 700, width: 120, height: 26, "font-size": 11 } },
+    { selector: "node.rule", style: { shape: "round-rectangle", width: 120, height: 22, "background-color": "data(color)", label: "data(label)", color: "#fff", "font-size": 10, "font-weight": 600 } },
+    { selector: "node.agg", style: { shape: "round-rectangle", "background-color": "#eef1f5", "border-color": "#8a8a8a", "border-width": 1, "border-style": "dashed", color: "#333", width: 108, height: 20, "font-size": 10 } },
+    { selector: "edge", style: { width: "data(w)", "line-color": "#b9c6d6", "curve-style": "bezier", opacity: 0.8 } },
+    { selector: "edge.lbl", style: { label: "data(n)", "font-size": 10, color: "#456", "text-background-color": "#fff", "text-background-opacity": 1, "text-background-padding": 2 } },
+    { selector: "edge.cr", style: { width: 1.3, "line-color": "#b3bfcc", "curve-style": "bezier", "target-arrow-shape": "triangle", "target-arrow-color": "#b3bfcc", "arrow-scale": 0.7 } },
+    { selector: "node.cell.hotc", style: { "border-color": "#e39a00", "border-width": 2.5, "background-color": "#fff6dc" } },
     { selector: ".faded", style: { opacity: 0.12 } },
+    { selector: ".hot", style: { "line-color": "#e39a00", opacity: 1, width: 2.5 } },
     { selector: "node:selected", style: { "border-width": 3, "border-color": "#ffcc00" } },
     { selector: "edge:selected", style: { "line-color": "#ffb000", width: 4, opacity: 1 } },
   ];
@@ -581,11 +1033,50 @@ function renderLineage() {
     if (S.linMods.has(b.dataset.m) && S.linMods.size > 1) S.linMods.delete(b.dataset.m); else S.linMods.add(b.dataset.m);
     renderLineage();
   });
-  const tablesMode = S.linMode === "tables";
-  $("#linmod").hidden = !tablesMode; $("#linextwrap").hidden = !tablesMode; $("#lindepthwrap").hidden = tablesMode;
+  const fsel = $("#linfocus");
+  const opts = S.lineage.nodes.filter((n) => n.inModule);
+  S.linFocus = S.linFocus || S.doc?.code || opts[0].code;
+  fsel.innerHTML = opts.map((n) => `<option value="${n.code}" ${n.code === S.linFocus ? "selected" : ""}>${esc(tc(n.code))} – ${esc((n.name || "").slice(0, 60))}</option>`).join("");
+  fsel.onchange = () => { S.linFocus = fsel.value; renderLineage(); };
+  const m = S.linMode;
+  fsel.hidden = m !== "focus";
+  $("#linmod").hidden = m !== "tables"; $("#linextwrap").hidden = m === "cell"; $("#lindepthwrap").hidden = m !== "cell";
   $("#linext").onchange = renderLineage; $("#lindepth").onchange = renderLineage;
+  $("#linfit").onclick = () => cy?.fit(undefined, 30);
   if (cy) { cy.destroy(); cy = null; }
-  if (tablesMode) lineageTables(); else lineageCell();
+  if (m === "tables") lineageTables(); else if (m === "focus") lineageFocus(); else lineageCell();
+}
+
+function edgesOf(code) { return S.lineage.edges.filter((e) => e.a === code || e.b === code); }
+
+function lineageFocus() {
+  const ext = $("#linext").checked, code = S.linFocus;
+  const info = S.lineage.nodes.find((x) => x.code === code);
+  const es = edgesOf(code).map((e) => ({ other: e.a === code ? e.b : e.a, n: e.rules.length, rules: e.rules }))
+    .filter((x) => ext || S.lineage.nodes.find((n) => n.code === x.other)?.inModule).sort((a, b) => b.n - a.n);
+  const nodeOf = (c, center) => {
+    const n = S.lineage.nodes.find((x) => x.code === c) || {};
+    return { data: { id: c, label: tc(c), color: n.inModule ? COL[n.module] : COL.ext }, classes: "tbl" + (center ? " center" : "") + (n.inModule ? "" : " ext") };
+  };
+  const max = Math.max(1, ...es.map((x) => x.n));
+  cy = cytoscape({
+    container: $("#cy"), style: cyStyle(), wheelSensitivity: 0.25,
+    elements: [nodeOf(code, true), ...es.map((x) => nodeOf(x.other)),
+      ...es.map((x, i) => ({ data: { id: "e" + i, source: code, target: x.other, w: 1 + 7 * (x.n / max), n: x.n, rules: x.rules }, classes: "lbl" }))],
+    layout: { name: "concentric", concentric: (n) => n.id() === code ? 10 : 1, levelWidth: () => 1, minNodeSpacing: 26, animate: false, padding: 40 },
+  });
+  $("#linhint").textContent = `${es.length} verknüpfte Bögen`;
+  $("#linside").innerHTML = `<h3>${esc(tc(code))}</h3><div class="sub">${esc(info?.name || "")}</div>
+    <div class="acts" style="margin:0 0 10px"><button class="btn" id="opentab">Meldebogen öffnen</button></div>
+    <div class="hint" style="margin-bottom:8px">Verbunden über gemeinsame Validierungsregeln. Bogen anklicken: Regeln dazwischen · Doppelklick: in den Fokus nehmen.</div>
+    ${es.map((x) => `<div class="nb" data-o="${x.other}"><div><b>${esc(tc(x.other))}</b> <small>${esc(tableName(x.other))}</small><div class="bar"><i style="width:${(x.n / max) * 100}%"></i></div></div><span>${x.n} Regel${x.n > 1 ? "n" : ""}</span></div>`).join("") || '<div class="hint">Keine tabellenübergreifenden Regeln.</div>'}`;
+  $("#opentab").onclick = () => openTable(code);
+  $$("#linside .nb").forEach((el) => el.onclick = () => showEdge(cy.edges().filter((e) => e.target().id() === el.dataset.o)[0]));
+  cy.on("tap", "node", (e) => { if (e.target.id() !== code) showEdge(cy.edges().filter((x) => x.target().id() === e.target.id())[0]); });
+  cy.on("dbltap", "node", (e) => { S.linFocus = e.target.id(); renderLineage(); });
+  cy.on("tap", "edge", (e) => showEdge(e.target));
+  cy.on("mouseover", "node", (e) => showTip(e.originalEvent, `${tc(e.target.id())}\n${tableName(e.target.id())}`));
+  cy.on("mouseout", "node", hideTip);
 }
 
 function lineageTables() {
@@ -595,128 +1086,177 @@ function lineageTables() {
   const edges = S.lineage.edges.filter((e) => ids.has(e.a) && ids.has(e.b));
   const deg = new Map();
   for (const e of edges) { deg.set(e.a, (deg.get(e.a) || 0) + e.rules.length); deg.set(e.b, (deg.get(e.b) || 0) + e.rules.length); }
-  const used = nodes.filter((n) => deg.get(n.code) || n.inModule);
+  const used = nodes.filter((n) => deg.get(n.code));
   cy = cytoscape({
     container: $("#cy"), style: cyStyle(), wheelSensitivity: 0.25,
     elements: [
       ...used.map((n) => ({ data: { id: n.code, label: tc(n.code), color: n.inModule ? COL[n.module] : COL.ext }, classes: "tbl" + (n.inModule ? "" : " ext") })),
-      ...edges.map((e, i) => ({ data: { id: "e" + i, source: e.a, target: e.b, w: Math.min(10, 1 + Math.log2(e.rules.length)), rules: e.rules } })),
+      ...edges.map((e, i) => ({ data: { id: "e" + i, source: e.a, target: e.b, w: Math.min(9, 1 + Math.log2(e.rules.length)), rules: e.rules } })),
     ],
-    layout: { name: "cose", animate: false, nodeRepulsion: 9000, idealEdgeLength: 90, edgeElasticity: 80, gravity: 0.6, numIter: 1500, randomize: true },
+    layout: { name: "cose", animate: false, nodeRepulsion: 14000, idealEdgeLength: 110, edgeElasticity: 80, gravity: 0.5, numIter: 1500, randomize: true, padding: 30 },
   });
-  $("#linhint").textContent = `${used.length} Meldebögen · ${edges.length} Verbindungen über gemeinsame Validierungsregeln`;
-  const side = $("#linside");
-  side.innerHTML = `<h3>Tabellen-Zusammenhänge</h3><div class="sub">Zwei Meldebögen sind verbunden, wenn mindestens eine Validierungsregel Zellen aus beiden prüft. Die Linienstärke zeigt die Anzahl der Regeln.</div>
-    <div class="legend"><span><i style="background:${COL.FINREP9}"></i>FINREP</span><span><i style="background:${COL.AE}"></i>Asset Encumbrance</span><span><i style="background:${COL.ext}"></i>andere Module (z. B. Pillar 3, COREP)</span></div>
-    <div class="hint">Meldebogen anklicken, um seine Verbindungen zu sehen. Verbindungslinie anklicken für die Regeln dazwischen.</div>
-    <h4 style="margin:16px 0 6px">Am stärksten vernetzt</h4>
-    ${[...deg].filter(([c]) => ids.has(c)).sort((a, b) => b[1] - a[1]).slice(0, 15).map(([c, n]) => `<div class="nb" data-n="${c}"><b>${esc(tc(c))}</b><span>${n} Regelbezüge</span></div>`).join("")}`;
-  $$("#linside .nb").forEach((el) => el.onclick = () => focusTable(el.dataset.n));
-  cy.on("tap", "node", (e) => focusTable(e.target.id()));
+  const isolated = nodes.length - used.length;
+  $("#linhint").textContent = `${used.length} vernetzte Bögen · ${edges.length} Verbindungen${isolated ? ` · ${isolated} ohne tabellenübergreifende Regeln ausgeblendet` : ""}`;
+  $("#linside").innerHTML = `<h3>Gesamtnetz</h3><div class="sub">Zwei Bögen sind verbunden, wenn mindestens eine Regel Zellen aus beiden prüft. Linienstärke = Anzahl Regeln.</div>
+    <div class="legend"><span><i style="background:${COL.FINREP9}"></i>FINREP</span><span><i style="background:${COL.AE}"></i>Asset Encumbrance</span><span><i style="background:${COL.ext}"></i>andere Module</span></div>
+    <h4 style="margin:14px 0 6px">Am stärksten vernetzt</h4>
+    ${[...deg].filter(([c]) => ids.has(c)).sort((a, b) => b[1] - a[1]).slice(0, 15).map(([c, n]) => `<div class="nb" data-n="${c}"><div><b>${esc(tc(c))}</b> <small>${esc(tableName(c).slice(0, 50))}</small></div><span>${n}</span></div>`).join("")}`;
+  $$("#linside .nb").forEach((el) => el.onclick = () => { S.linFocus = el.dataset.n; S.linMode = "focus"; renderLineage(); });
+  cy.on("tap", "node", (e) => {
+    const n = e.target;
+    cy.elements().addClass("faded"); n.closedNeighborhood().removeClass("faded");
+  });
+  cy.on("dbltap", "node", (e) => { S.linFocus = e.target.id(); S.linMode = "focus"; renderLineage(); });
   cy.on("tap", "edge", (e) => showEdge(e.target));
   cy.on("tap", (e) => { if (e.target === cy) cy.elements().removeClass("faded"); });
-  cy.on("mouseover", "node", (e) => { const n = S.lineage.nodes.find((x) => x.code === e.target.id()); showTip(e.originalEvent, `${tc(n.code)}\n${n.name || ""}`); });
+  cy.on("mouseover", "node", (e) => showTip(e.originalEvent, `${tc(e.target.id())}\n${tableName(e.target.id())}\nDoppelklick: in den Fokus nehmen`));
   cy.on("mouseout", "node", hideTip);
 }
 
-function focusTable(code) {
-  const n = cy.getElementById(code);
-  if (!n.length) return;
-  cy.elements().addClass("faded");
-  n.closedNeighborhood().removeClass("faded");
-  cy.animate({ fit: { eles: n.closedNeighborhood(), padding: 60 }, duration: 300 });
-  const info = S.lineage.nodes.find((x) => x.code === code);
-  const nb = n.connectedEdges().map((e) => ({ other: e.source().id() === code ? e.target().id() : e.source().id(), e })).sort((a, b) => b.e.data("rules").length - a.e.data("rules").length);
-  $("#linside").innerHTML = `<h3>${esc(tc(code))}</h3><div class="sub">${esc(info?.name || "")}${info?.inModule ? "" : " · außerhalb von FINREP/AE"}</div>
-    ${info?.inModule ? `<button class="lnk" id="opentab">Meldebogen öffnen</button>` : ""}
-    <h4 style="margin:14px 0 6px">Verbunden mit ${nb.length} Meldebögen</h4>
-    ${nb.map((x) => `<div class="nb" data-e="${x.e.id()}"><b>${esc(tc(x.other))}</b><span>${x.e.data("rules").length} Regel(n)</span></div>`).join("") || '<div class="hint">Keine tabellenübergreifenden Regeln.</div>'}`;
-  $("#opentab")?.addEventListener("click", () => { setView("sheet"); openTable(code); });
-  $$("#linside .nb").forEach((el) => el.onclick = () => showEdge(cy.getElementById(el.dataset.e)));
-}
-
 function showEdge(edge) {
+  if (!edge) return;
   const a = edge.source().id(), b = edge.target().id();
   cy.elements().addClass("faded");
   edge.removeClass("faded"); edge.connectedNodes().removeClass("faded");
   cy.elements().unselect(); edge.select();
   const rs = edge.data("rules").map((id) => S.rules[id]).filter(Boolean);
-  $("#linside").innerHTML = `<h3>${esc(tc(a))} ↔ ${esc(tc(b))}</h3><div class="sub">${rs.length} gemeinsame Validierungsregel(n)</div>
-    ${rs.slice(0, 80).map((r) => ruleCard(r, null, Object.keys(r.sev)[0])).join("")}`;
+  S.openRules = new Set();
+  $("#linside").innerHTML = `<button class="lnk" id="linback">‹ zurück</button><h3 style="margin-top:6px">${esc(tc(a))} ↔ ${esc(tc(b))}</h3><div class="sub">${rs.length} gemeinsame Regel(n)</div>
+    ${rs.slice(0, 100).map((r) => ruleRow(r, null, Object.keys(r.sev)[0])).join("")}`;
+  $("#linback").onclick = renderLineage;
+  bindRuleRows($("#linside"), null, null);
   bindChips($("#linside"));
-  $$("#linside [data-act=lineage]").forEach((btn) => btn.onclick = () => { S.linRule = +btn.dataset.rule; S.linMode = "cell"; renderLineage(); });
 }
 
 function cellLabel(cid) {
   const ci = S.ruleCells[cid];
   return ci ? `r${ci[1] || "–"} · c${ci[2] || "–"}${ci[3] ? " · s" + ci[3] : ""}` : String(cid);
 }
+function cellTip(cid) {
+  const ci = S.ruleCells[cid];
+  if (!ci) return "";
+  return `${tc(ci[0])} · ${cellLabel(cid)}\n${S.lab.get(`${ci[0]}|r|${ci[1]}`) || ""}\n${S.lab.get(`${ci[0]}|c|${ci[2]}`) || ""}`;
+}
 
+// Zell-Lineage in Spalten: Zelle → Regeln → Zellen (gruppiert nach Bogen) [→ Regeln → Zellen]
 function lineageCell() {
   const side = $("#linside");
-  let center = S.sel && S.doc ? S.sel.id : null;
-  let ruleIds;
-  if (S.linRule) { ruleIds = [S.linRule]; }
-  else if (center) { ruleIds = S.cellRules.get(center) || []; }
-  else {
-    $("#cy").innerHTML = "";
-    $("#linhint").textContent = "";
-    side.innerHTML = `<h3>Zell-Lineage</h3><div class="sub">Bitte zuerst im Meldebogen eine Zelle auswählen. Hier siehst du dann, über welche Regeln sie mit anderen Zellen und Meldebögen zusammenhängt.</div>`;
+  const center = S.sel && S.doc ? S.sel.id : null;
+  const ruleIds = S.linRule ? [S.linRule] : center ? (S.cellRules.get(center) || []) : [];
+  if (!ruleIds.length) {
+    $("#cy").innerHTML = ""; $("#linhint").textContent = "";
+    side.innerHTML = `<h3>Zell-Lineage</h3><div class="sub">${center ? "An dieser Zelle hängen keine Regeln." : "Bitte zuerst im Meldebogen eine Zelle auswählen."} Hier siehst du dann, über welche Regeln sie mit anderen Zellen und Bögen zusammenhängt.</div>`;
     return;
   }
   const depth2 = $("#lindepth").checked && !S.linRule;
-  const els = new Map();
-  const addTable = (t) => { if (!els.has("t:" + t)) els.set("t:" + t, { data: { id: "t:" + t, label: `${tc(t)}` }, classes: "cmp" }); };
-  const addCell = (cid, cls = "") => {
-    const ci = S.ruleCells[cid]; const t = ci ? ci[0] : (S.doc?.code || "?");
-    addTable(t);
-    if (!els.has("c:" + cid)) els.set("c:" + cid, { data: { id: "c:" + cid, label: cellLabel(cid), parent: "t:" + t, cid }, classes: "cell " + cls });
-  };
-  const edges = new Set();
-  const addRule = (rid, from) => {
-    const r = S.rules[rid]; if (!r) return;
-    const sev = Object.values(r.sev).includes("error");
-    if (!els.has("r:" + rid)) els.set("r:" + rid, { data: { id: "r:" + rid, label: r.code, color: sev ? COL.err : COL.warn, rid }, classes: "rule" });
+  const mod = S.doc?.module || "FINREP9";
+  const els = [], edges = [];
+  const shown = new Set(center ? [center] : []);
+  const X = [0, 300, 600, 900, 1200];
+  const sortR = (ids) => ids.map((id) => S.rules[id]).filter(Boolean)
+    .sort((a, b) => (ruleSev(b, mod) === "error") - (ruleSev(a, mod) === "error") || b.tables.length - a.tables.length || a.code.localeCompare(b.code));
+
+  const placeLevel = (rules, fromOf, lvl) => {
+    const xr = X[lvl * 2 - 1], xc = X[lvl * 2];
+    rules.forEach((r, i) => {
+      els.push({ data: { id: `r${lvl}:${r.id}`, label: r.code, color: ruleSev(r, mod) === "error" ? COL.err : COL.warn, rid: r.id }, classes: "rule", position: { x: xr, y: i * 34 } });
+      for (const f of fromOf(r)) edges.push([f, `r${lvl}:${r.id}`]);
+    });
+    // Zellen je Bogen sammeln
     const byT = new Map();
-    for (const c of r.cells) { const t = S.ruleCells[c]?.[0]; if (!byT.has(t)) byT.set(t, []); byT.get(t).push(c); }
-    for (const [t, cs] of byT) {
-      const others = cs.filter((c) => c !== center);
-      if (others.length > 12) {
-        addTable(t);
-        const id = `a:${rid}:${t}`;
-        els.set(id, { data: { id, label: `${others.length} weitere Zellen`, parent: "t:" + t }, classes: "agg" });
-        edges.add(`r:${rid}|${id}`);
-      } else for (const c of others) {
-        addCell(c);
-        edges.add(`r:${rid}|c:${c}`);
+    rules.forEach((r, ri) => {
+      for (const c of r.cells) {
+        if (shown.has(c) && lvl === 1 && c === center) continue;
+        const t = S.ruleCells[c]?.[0] || "?";
+        if (!byT.has(t)) byT.set(t, { first: ri, cells: new Map() });
+        const g = byT.get(t);
+        if (!g.cells.has(c)) g.cells.set(c, new Set());
+        g.cells.get(c).add(r.id);
       }
+    });
+    let y = 0;
+    const next = [];
+    const tedge = new Set();
+    for (const [t, g] of [...byT].sort((a, b) => a[1].first - b[1].first)) {
+      const pid = `t${lvl}:${t}`;
+      els.push({ data: { id: pid, label: `${tc(t)}  ·  ${g.cells.size} Zelle${g.cells.size > 1 ? "n" : ""}` }, classes: "cmp" });
+      y += 30;
+      const list = [...g.cells].sort((a, b) => cellLabel(a[0]).localeCompare(cellLabel(b[0])));
+      const LIM = 6;
+      for (const [c, rids] of list.slice(0, LIM)) {
+        const id = `c${lvl}:${c}`;
+        if (!shown.has(c)) next.push(c);
+        shown.add(c);
+        els.push({ data: { id, label: cellLabel(c), parent: pid, cid: c }, classes: "cell", position: { x: xc, y } });
+        for (const rid of rids) tedge.add(`r${lvl}:${rid}|${pid}`);
+        y += 26;
+      }
+      if (list.length > LIM) {
+        const id = `a${lvl}:${t}`;
+        els.push({ data: { id, label: `+ ${list.length - LIM} weitere`, parent: pid }, classes: "agg", position: { x: xc, y } });
+        for (const [, rids] of list.slice(LIM)) for (const rid of rids) tedge.add(`r${lvl}:${rid}|${pid}`);
+        y += 26;
+      }
+      y += 22;
     }
-    if (from) edges.add(`${from}|r:${rid}`);
+    for (const k of tedge) edges.push(k.split("|"));
+    // Spalten vertikal zentrieren
+    const rh = rules.length * 34, off = (y - rh) / 2;
+    for (const e of els) if (e.data.id.startsWith(`r${lvl}:`)) e.position.y += Math.max(0, off);
+    return { next, height: Math.max(y, rh) };
   };
-  if (center) addCell(center, "cur");
-  for (const rid of ruleIds) addRule(rid, center ? "c:" + center : null);
+
+  const R1 = sortR(ruleIds);
+  const l1 = placeLevel(R1, () => (center ? ["c0"] : []), 1);
+  if (center) els.push({ data: { id: "c0", label: cellLabel(center), cid: center }, classes: "cell cur", position: { x: X[0], y: l1.height / 2 } });
+  let nR2 = 0;
   if (depth2) {
-    const firstCells = [...els.values()].filter((e) => e.data.cid && e.data.cid !== center).map((e) => e.data.cid);
-    for (const c of firstCells.slice(0, 40)) for (const rid of (S.cellRules.get(c) || []).slice(0, 15)) if (!els.has("r:" + rid)) addRule(rid, "c:" + c);
+    const have = new Set(ruleIds);
+    const R2ids = new Set();
+    const from = new Map();
+    for (const c of l1.next.slice(0, 40)) for (const rid of (S.cellRules.get(c) || [])) {
+      if (have.has(rid)) continue;
+      if (R2ids.size >= 40 && !R2ids.has(rid)) continue;
+      R2ids.add(rid);
+      if (!from.has(rid)) from.set(rid, new Set());
+      from.get(rid).add(`c1:${c}`);
+    }
+    const R2 = sortR([...R2ids]);
+    nR2 = R2.length;
+    placeLevel(R2, (r) => [...(from.get(r.id) || [])].filter((id) => els.some((e) => e.data.id === id)), 2);
   }
-  const elements = [...els.values(), ...[...edges].map((k, i) => { const [s, t] = k.split("|"); return { data: { id: "x" + i, source: s, target: t, w: 1.2 }, classes: "cr" }; })];
-  cy = cytoscape({ container: $("#cy"), style: cyStyle(), elements, wheelSensitivity: 0.25,
-    layout: { name: "cose", animate: false, nodeRepulsion: 12000, idealEdgeLength: 70, nestingFactor: 0.9, gravity: 0.5, numIter: 1200, randomize: true } });
-  const nr = [...els.keys()].filter((k) => k.startsWith("r:")).length, nt = [...els.keys()].filter((k) => k.startsWith("t:")).length;
-  $("#linhint").textContent = `${nr} Regeln · ${nt} Meldebögen${els.size > 400 ? " · großer Graph – ggf. ohne 2. Ebene betrachten" : ""}`;
+  const ids = new Set(els.map((e) => e.data.id));
+  const elements = [...els, ...edges.filter(([s, t]) => ids.has(s) && ids.has(t)).map(([s, t], i) => ({ data: { id: "x" + i, source: s, target: t }, classes: "cr" }))];
+  cy = cytoscape({ container: $("#cy"), style: cyStyle(), elements, wheelSensitivity: 0.25, layout: { name: "preset", padding: 30 }, autoungrabify: true });
+  if (cy.zoom() < 0.8) { cy.zoom(0.8); cy.center(cy.nodes(".rule").union(cy.$("#c0"))); }
+  const tabsN = new Set(els.filter((e) => e.classes === "cmp").map((e) => e.data.id.split(":")[1])).size;
+  $("#linhint").textContent = `${R1.length + nR2} Regeln · ${tabsN} Bögen`;
   const k = center ? cellCodes(S.doc, S.sel) : null;
-  side.innerHTML = S.linRule ? `<h3>Regel ${esc(S.rules[S.linRule].code)}</h3><div class="sub">Alle Zellen, die diese Regel prüft – gruppiert nach Meldebogen.</div>${ruleCard(S.rules[S.linRule], null, Object.keys(S.rules[S.linRule].sev)[0])}`
-    : `<h3>Zell-Lineage</h3><div class="sub">${esc(tc(S.doc.code))} · r${esc(k.r)} · c${esc(k.c)} – ${ruleIds.length} Regeln verbinden diese Zelle mit anderen Zellen.</div>
-       <div class="legend"><span><i style="background:#fff3c4;border:1px solid #c79d00"></i>gewählte Zelle</span><span><i style="background:${COL.err}"></i>Regel (Fehler)</span><span><i style="background:${COL.warn}"></i>Regel (Warnung)</span><span><i style="background:#f4f6f9;border:1px solid #9fb3cc"></i>Meldebogen</span></div>
-       <div class="hint">Regel (Raute) oder Zelle anklicken für Details. Doppelklick auf eine Zelle öffnet sie im Meldebogen.</div>`;
-  bindChips(side);
+  const intro = () => {
+    S.openRules = new Set();
+    side.innerHTML = S.linRule ? `<h3>Regel ${esc(S.rules[S.linRule].code)}</h3><div class="sub">Alle Zellen, die diese Regel prüft – gruppiert nach Bogen.</div>${ruleCard(S.rules[S.linRule], null, mod)}`
+      : `<h3>Zell-Lineage</h3><div class="sub"><b>${esc(tc(S.doc.code))} · r${esc(k.r)} · c${esc(k.c)}</b><br>${esc(S.lab.get(`${S.doc.code}|r|${k.r}`) || "")} / ${esc(S.lab.get(`${S.doc.code}|c|${k.c}`) || "")}</div>
+         <div class="legend"><span><i style="background:#fff3c4;border:1px solid #c79d00"></i>gewählte Zelle</span><span><i style="background:${COL.err}"></i>Regel (Fehler)</span><span><i style="background:${COL.warn}"></i>Regel (Warnung)</span><span><i style="background:#f4f6f9;border:1px solid #9fb3cc"></i>Bogen</span></div>
+         <div class="hint">Links die Zelle, in der Mitte die Regeln, rechts die Zellen, die dieselben Regeln prüfen. Regel anklicken für den Text · Doppelklick auf eine Zelle öffnet sie.</div>
+         <div class="rgroup">Regeln</div>${R1.map((r) => ruleRow(r, `${S.doc.code}|${k.r}|${k.c}`, mod)).join("")}`;
+    bindChips(side); bindRuleRows(side, k ? `${S.doc.code}|${k.r}|${k.c}` : null, mod);
+  };
+  intro();
+  const hot = (n) => {
+    cy.elements().removeClass("hot hotc");
+    n.connectedEdges().addClass("hot");
+    const rid = n.data("rid");
+    if (rid) { const cs = new Set(S.rules[rid].cells); cy.nodes(".cell").filter((x) => cs.has(x.data("cid"))).addClass("hotc"); }
+  };
   cy.on("tap", "node.rule", (e) => {
+    hot(e.target);
     const r = S.rules[e.target.data("rid")];
-    side.innerHTML = ruleCard(r, k ? `${S.doc.code}|${k.r}|${k.c}` : null, Object.keys(r.sev)[0]);
-    bindChips(side);
-    $$("[data-act=lineage]", side).forEach((b) => b.onclick = () => { S.linRule = r.id; renderLineage(); });
+    side.innerHTML = `<button class="lnk" id="linback">‹ Übersicht</button><div style="margin-top:8px">${ruleCard(r, k ? `${S.doc.code}|${k.r}|${k.c}` : null, mod)}</div>`;
+    $("#linback").onclick = intro;
+    bindChips(side); bindLineageBtns(side);
   });
   cy.on("tap", "node.cell", async (e) => {
+    hot(e.target);
     const cid = e.target.data("cid"), ci = S.ruleCells[cid];
     if (!ci) return;
     let lbl = "";
@@ -724,12 +1264,17 @@ function lineageCell() {
       const d = await loadDoc(ci[0]); const c = d.cById.get(cid);
       if (c) lbl = `<div class="kv" style="margin-top:8px"><div class="k">Zeile</div><div>${esc(hPath(d, c.r).map((h) => h.label).join(" › "))}</div><div class="k">Spalte</div><div>${esc(hPath(d, c.c).map((h) => h.label).join(" › "))}</div></div>`;
     }
-    side.innerHTML = `<h3>${esc(tc(ci[0]))} · ${esc(cellLabel(cid))}</h3><div class="sub">${esc((S.lineage.nodes.find((x) => x.code === ci[0]) || {}).name || "")}</div>${lbl}
+    side.innerHTML = `<button class="lnk" id="linback">‹ Übersicht</button><h3 style="margin-top:8px">${esc(tc(ci[0]))} · ${esc(cellLabel(cid))}</h3><div class="sub">${esc(tableName(ci[0]))}</div>${lbl}
       <div style="margin-top:8px">${(S.cellRules.get(cid) || []).length} Regeln an dieser Zelle.</div>
-      ${moduleOf(ci[0]) ? `<button class="lnk" id="opencell" style="margin-top:8px">Im Meldebogen öffnen</button>` : ""}`;
-    $("#opencell")?.addEventListener("click", () => { setView("sheet"); openTable(ci[0], { r: ci[1], c: ci[2], s: ci[3] }); });
+      ${moduleOf(ci[0]) ? `<div class="acts"><button class="btn" id="opencell">Im Meldebogen öffnen</button></div>` : ""}`;
+    $("#linback").onclick = intro;
+    $("#opencell")?.addEventListener("click", () => openTable(ci[0], { r: ci[1], c: ci[2], s: ci[3] }));
   });
-  cy.on("dbltap", "node.cell", (e) => { const ci = S.ruleCells[e.target.data("cid")]; if (ci && moduleOf(ci[0])) { setView("sheet"); openTable(ci[0], { r: ci[1], c: ci[2], s: ci[3] }); } });
+  cy.on("dbltap", "node.cell", (e) => { const ci = S.ruleCells[e.target.data("cid")]; if (ci && moduleOf(ci[0])) openTable(ci[0], { r: ci[1], c: ci[2], s: ci[3] }); });
+  cy.on("mouseover", "node.cell", (e) => showTip(e.originalEvent, cellTip(e.target.data("cid"))));
+  cy.on("mouseover", "node.rule", (e) => showTip(e.originalEvent, plain(S.rules[e.target.data("rid")]?.verbal).slice(0, 300)));
+  cy.on("mouseout", "node", hideTip);
+  cy.on("tap", (e) => { if (e.target === cy) cy.elements().removeClass("hot hotc"); });
 }
 
 // ------------------------------------------------------------------ DPM-Struktur
@@ -855,113 +1400,6 @@ function renderModel() {
   setTimeout(() => { cym.resize(); cym.fit(undefined, 30); }, 0);
   showEntity(cell ? "cell" : "table");
   $("#modelside").insertAdjacentHTML("afterbegin", `<div class="legend" style="margin:0 0 10px"><span><i style="background:#f3faf5;border:1px solid #217346"></i>Layout (Meldebogen-Sicht)</span><span><i style="background:#f2f6fc;border:1px solid #2f6db5"></i>Bedeutung (Datenpunkt-Sicht)</span><span><i style="background:#fffaf0;border:1px solid #d68910"></i>Validierung</span></div>`);
-}
-
-// ------------------------------------------------------------------ Release-Vergleich
-const CH_TYPES = [
-  ["new", "Neue Zelle", "#c9ecd2"], ["opened", "Nicht mehr grau", "#c9ecd2"], ["greyed", "Neu grau", "#e7b3ad"],
-  ["dp", "Datenpunkt geändert", "#d6e4fb"], ["sign", "Vorzeichen geändert", "#e8d4f1"], ["lab", "Bezeichnung geändert", "#fff1a8"],
-  ["rule", "Regel neu/geändert", "#8e44ad"],
-];
-
-function initCompare() {
-  const sel = $("#cmpsel");
-  sel.innerHTML = `<option value="">– Vergleich aus –</option>` + S.diffIdx.map((d) => {
-    const n = (d.summary.tables_changed || 0) + (d.summary.tables_new || 0);
-    return `<option value="${esc(d.code)}">${esc(d.code)} (${esc(d.date)})${n ? "" : " – keine Änderung"}</option>`;
-  }).join("");
-  sel.onchange = async () => {
-    S.diff = sel.value ? await fetchJSON(`data/diff/${encodeURIComponent(sel.value)}.json`) : null;
-    $("#cmponlywrap").hidden = !S.diff;
-    renderToc(); renderGrid();
-    if (S.sel) { const c = S.doc.cById.get(S.sel.id); selectCell(c); }
-  };
-  $("#cmponly").onchange = renderToc;
-}
-
-function renderCmpbar() {
-  const bar = $("#cmpbar");
-  if (!S.diff || !S.doc) { bar.hidden = true; return; }
-  bar.hidden = false;
-  const e = S.diff.tables[S.doc.code];
-  const head = `<b>Änderungen seit ${esc(S.diff.base.code)}</b>`;
-  if (!e) { bar.innerHTML = `${head}: in diesem Meldebogen keine Änderungen.`; return; }
-  if (e.st === "new") { bar.innerHTML = `${head}: <b>Meldebogen ist neu</b> (gab es in ${esc(S.diff.base.code)} noch nicht).`; return; }
-  const cnt = {};
-  for (const ts of Object.values(e.cells)) for (const t of ts) cnt[t] = (cnt[t] || 0) + 1;
-  cnt.lab = e.labels.length;
-  cnt.rule = e.rules.add.length + e.rules.chg.length;
-  const toggles = CH_TYPES.filter(([k]) => cnt[k]).map(([k, l, col]) =>
-    `<span class="t ${S.cmpTypes.has(k) ? "" : "off"}" data-k="${k}" title="Ein-/ausblenden"><i style="background:${col}"></i>${l}: ${cnt[k]}</span>`).join("");
-  const extra = [];
-  if (e.removed.length) extra.push(`${e.removed.length} Zelle(n) entfallen`);
-  if (e.rules.del.length) extra.push(`${e.rules.del.length} Regel(n) entfallen`);
-  bar.innerHTML = `${head}: ${toggles} ${extra.length ? `<span>· ${extra.join(" · ")}</span>` : ""} <button class="lnk" id="chlist">Änderungsliste</button>`;
-  $$(".t", bar).forEach((t) => t.onclick = () => {
-    S.cmpTypes.has(t.dataset.k) ? S.cmpTypes.delete(t.dataset.k) : S.cmpTypes.add(t.dataset.k);
-    const sel = S.sel; renderGrid(); if (sel) selectCell(sel);
-  });
-  $("#chlist").onclick = showChangeList;
-}
-
-function dimsDiff(oldDims, newDims) {
-  const o = new Set(oldDims.map((d) => `${d[0]}: ${d[1]}`)), n = new Set(newDims.map((d) => `${d[0]}: ${d[2]}`));
-  const out = [];
-  for (const x of n) out.push(o.has(x) ? `<li>${esc(x)}</li>` : `<li class="plus">+ ${esc(x)}</li>`);
-  for (const x of o) if (!n.has(x)) out.push(`<li class="minus">− ${esc(x)}</li>`);
-  return `<ul>${out.join("")}</ul>`;
-}
-
-function cellChangeHtml(cell) {
-  if (!S.diff) return "";
-  const e = S.diff.tables[S.doc.code];
-  if (!e) return "";
-  const types = e.cells[cell.id] || [];
-  const ruleNew = e.rules.add.filter((id) => cell.rules.includes(id));
-  const ruleChg = e.rules.chg.filter((x) => cell.rules.includes(x.id));
-  if (!types.length && !ruleNew.length && !ruleChg.length && e.st !== "new") return "";
-  const L = Object.fromEntries(CH_TYPES.map(([k, l]) => [k, l]));
-  const items = [];
-  if (e.st === "new") items.push("<li>Meldebogen ist neu</li>");
-  for (const t of types) if (t !== "dp") items.push(`<li>${esc(L[t])}</li>`);
-  let dp = "";
-  if (types.includes("dp") && e.dp[cell.id]) {
-    const v = S.doc.vars[cell.var], [om, od] = e.dp[cell.id];
-    dp = `<div style="margin-top:4px"><b>Datenpunkt-Definition geändert</b>${om !== v.metric[0] ? ` – Kennzahl: <span class="minus">${esc(om)}</span> → <span class="plus">${esc(v.metric[0])}</span>` : ""}${dimsDiff(od, v.dims)}</div>`;
-  }
-  if (ruleNew.length) items.push(`<li>${ruleNew.length} neue Regel(n): ${ruleNew.map((id) => esc(S.rules[id].code)).join(", ")}</li>`);
-  if (ruleChg.length) items.push(`<li>${ruleChg.length} geänderte Regel(n): ${ruleChg.map((x) => esc(S.rules[x.id].code)).join(", ")}</li>`);
-  return `<div class="sec"><h4>Änderungen seit ${esc(S.diff.base.code)}</h4><div class="note chg"><ul>${items.join("")}</ul>${dp}</div></div>`;
-}
-
-function showChangeList() {
-  const doc = S.doc, e = S.diff?.tables[doc.code];
-  if (!e) return;
-  $("#details").hidden = false;
-  $("#dtitle").innerHTML = `<b>Änderungen ${esc(tc(doc.code))}</b><div style="color:#555;font-size:12px;margin-top:3px">Release ${esc(S.diff.base.code)} → ${esc(S.diff.cur.code)}</div>`;
-  const L = Object.fromEntries(CH_TYPES.map(([k, l]) => [k, l]));
-  const byType = {};
-  for (const [id, ts] of Object.entries(e.cells)) for (const t of ts) (byType[t] = byType[t] || []).push(+id);
-  const cellChip = (id) => {
-    const c = doc.cById.get(id); if (!c) return "";
-    const k = cellCodes(doc, c);
-    return `<span class="chip" data-t="${doc.code}" data-r="${k.r}" data-c="${k.c}" data-s="${k.s}" data-tip="${esc((S.lab.get(`${doc.code}|r|${k.r}`) || "") + "\n" + (S.lab.get(`${doc.code}|c|${k.c}`) || ""))}">r${k.r} · c${k.c}${k.s ? " · s" + k.s : ""}</span>`;
-  };
-  const h = [];
-  for (const [k] of CH_TYPES) if (byType[k]) h.push(`<div class="sec"><h4>${esc(L[k])} <span class="n">${byType[k].length}</span></h4><div class="chips">${byType[k].slice(0, 150).map(cellChip).join("")}${byType[k].length > 150 ? " …" : ""}</div></div>`);
-  if (e.removed.length) h.push(`<div class="sec"><h4>Entfallene Zellen <span class="n">${e.removed.length}</span></h4><div class="chg"><ul>${e.removed.map((x) => `<li class="minus">r${esc(x[0])} · c${esc(x[1])}${x[2] ? " · s" + esc(x[2]) : ""}</li><div style="color:#555;margin:-2px 0 4px 6px">${esc(x[3])} / ${esc(x[4])}</div>`).join("")}</ul></div></div>`);
-  if (e.labels.length) h.push(`<div class="sec"><h4>Geänderte Bezeichnungen <span class="n">${e.labels.length}</span></h4><div class="chg"><ul>${e.labels.map((l) => `<li><code class="c">${l[0]}${esc(l[1])}</code> <span class="minus">${esc(l[2])}</span> → <span class="plus">${esc(l[3])}</span></li>`).join("")}</ul></div></div>`);
-  const mod = doc.module;
-  if (e.rules.add.length) h.push(`<div class="sec"><h4>Neue Regeln <span class="n">${e.rules.add.length}</span></h4>${e.rules.add.map((id) => ruleCard(S.rules[id], null, mod)).join("")}</div>`);
-  if (e.rules.chg.length) h.push(`<div class="sec"><h4>Geänderte Regeln <span class="n">${e.rules.chg.length}</span></h4>${e.rules.chg.map((x) => ruleCard(S.rules[x.id], null, mod).replace("<details>", `<div class="pre"><b>Bisheriger Ausdruck:</b></div><pre>${esc(x.old)}</pre><details>`)).join("")}</div>`);
-  if (e.rules.del.length) h.push(`<div class="sec"><h4>Entfallene Regeln <span class="n">${e.rules.del.length}</span></h4>${e.rules.del.map((r) =>
-    `<div class="rule"><div class="rh"><b>${esc(r.code)}</b><span class="badge grey">entfallen</span></div><div class="rv">${r.verbal ? verbal(r.verbal) : ""}</div><details><summary>DPM-XL</summary><pre>${esc(r.expr)}</pre></details></div>`).join("")}<div class="hint">Verbalisierung entfallener Regeln mit den heutigen Bezeichnungen.</div></div>`);
-  $("#dbody").innerHTML = h.join("") || '<div class="hint">Keine Änderungen.</div>';
-  bindChips($("#dbody"));
-  $$("#dbody .rule[data-rule]").forEach((el) => {
-    el.onmouseenter = () => highlightRule(+el.dataset.rule, true);
-    el.onmouseleave = () => highlightRule(+el.dataset.rule, false);
-  });
 }
 
 // ------------------------------------------------------------------ Datenpunkt-Suche
@@ -1099,6 +1537,7 @@ async function renderHier() {
   $("#hifilter").value = H.filter;
   $("#hifilter").oninput = () => { H.filter = $("#hifilter").value; renderHierCats(); };
   if (H.cat == null) H.cat = Math.max(0, S.hier.findIndex((c) => c.code === "qSR"));
+  if (H.sub == null) H.sub = 0;
   renderHierCats();
 }
 
