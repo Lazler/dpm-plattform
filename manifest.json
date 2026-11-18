@@ -2,11 +2,10 @@
   "release": "4.4",
   "schema_name": "dpm_r4_4",
   "source_file": "DPM2 Database_v 4_4_20261006.accdb",
-  "source_path": "C:\\Users\\laszlo.miller\\Accenture\\RPSG - AI - Documents\\Use Cases\\04 MeWe Change 2030\\03_KI_Prozess\\_Geteilte_Ressourcen\\01_DPM\\04 DPM 4.4\\DPM2 Database_v 4_4_20261006.accdb",
+  "source_path": "DPM2 Database_v 4_4_20261006.accdb",
   "source_size_bytes": 599760896,
   "source_sha256": "EF3B55F7A28E4213EA1F2E72A17C67A30F8FADBE5EE14B15170763D3767A3381",
   "exported_at_utc": "2026-10-28T14:01:40Z",
-  "exported_by": "laszlo.miller",
   "tooling": {
     "python": "3.14.7",
     "pyarrow": "25.0.1",

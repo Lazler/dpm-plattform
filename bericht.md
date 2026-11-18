@@ -1,9 +1,9 @@
 # DPM-Release 4.4 – Ladebericht Azure SQL
 
-- **Zielschema:** `dpm_r4_4` in `db-dpmasset` (sql-server-dbpm)
+- **Zielschema:** `dpm_r4_4`
 - **Quelle:** `DPM2 Database_v 4_4_20261006.accdb`
 - **SHA-256:** `EF3B55F7A28E4213EA1F2E72A17C67A30F8FADBE5EE14B15170763D3767A3381`
-- **Geladen:** 2026-10-28 14:16:09 UTC durch laszlo.miller@accenture.com (1751 s)
+- **Geladen:** 2026-10-28 14:16:09 UTC (1751 s)
 - **Umfang:** 70 Tabellen, 5.843.285 Zeilen, 178 Fremdschlüssel
 - **Status:** **geprüft**
 
