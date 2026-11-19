@@ -49,6 +49,12 @@ async function init() {
     fetchJSON("data/meta.json"), fetchJSON("data/rules.json"), fetchJSON("data/lineage.json"), fetchJSON("data/search.json"),
     fetchJSON("data/diff/index.json").catch(() => []),
   ]);
+  S.inst = await fetchJSON("data/instructions.json").catch(() => ({ docs: [], items: [] }));
+  S.instBy = new Map();
+  for (const it of S.inst.items) for (const l of it.links) {
+    if (!S.instBy.has(l.t)) S.instBy.set(l.t, []);
+    S.instBy.get(l.t).push([it, l]);
+  }
   S.meta = meta; S.rules = rules.rules; S.ruleCells = rules.cells; S.lineage = lineage; S.search = search; S.diffIdx = diffIdx;
   S.lab = new Map(search.map((h) => [`${h[0]}|${h[1]}|${h[2]}`, h[3]]));
   S.cellRules = new Map();
@@ -169,7 +175,8 @@ function renderStart() {
     <p class="lead">Die EBA-Datenbank (DPM 2.0) in der Sprache der Meldebögen: Templates im Excel-Look, Datenpunkte mit ihren Dimensionen, Validierungsregeln in Worten und die Zusammenhänge zwischen allem.</p>
     <div class="cards">${modCards}
       <div class="card"><h3>Release ${esc(cur.Code)}</h3><div class="sub">aktuelles Release vom ${esc(cur.Date)}</div>
-        <ul class="chlist">${idx.slice(0, 4).map((d) => `<li><b>seit ${esc(d.code)}:</b> ${esc(sumTxt(d))} <button class="lnk" data-cmp="${esc(d.code)}">ansehen</button></li>`).join("")}</ul></div>
+        <ul class="chlist">${idx.slice(0, 4).map((d) => `<li><b>seit ${esc(d.code)}:</b> ${esc(sumTxt(d))} <button class="lnk" data-cmp="${esc(d.code)}">ansehen</button></li>`).join("")}</ul>
+        <div class="sub" style="margin:10px 0 0">Instructions: ${S.inst.items.length ? `${fmt(S.inst.items.length)} Einträge aus ${S.inst.docs.length} Word-Dokument(en)` : "noch keine Word-Dateien importiert"}</div></div>
     </div>
     <div class="sh">Was du hier tun kannst</div>
     <div class="how">${how}</div>
@@ -727,6 +734,8 @@ function renderDetails(cell) {
   const chg = cellChangeHtml(cell);
   const tabs = [["ov", "Überblick", ""], ["rules", "Regeln", rs.length ? `<span class="n ${nErr ? "e" : ""}">${rs.length}</span>` : ""],
     ["links", "Zusammenhänge", linked.size + (cell.same?.length || 0) ? `<span class="n">${linked.size + (cell.same?.length || 0)}</span>` : ""]];
+  const inst = cellInstructions(doc, cell);
+  tabs.splice(2, 0, ["inst", "Instructions", inst.length ? `<span class="n">${inst.length}</span>` : ""]);
   if (chg) tabs.push(["chg", "Änderungen", `<span class="n">Δ</span>`]);
   if (!tabs.some((t) => t[0] === S.dtab)) S.dtab = "ov";
   $("#dtabs").hidden = false;
@@ -759,7 +768,9 @@ function renderDetails(cell) {
       const top = rs.slice().sort((a, b) => (ruleSev(b, doc.module) === "error") - (ruleSev(a, doc.module) === "error"))[0];
       html.push(`<div class="sec"><h4>Wichtigste Regel</h4>${ruleRow(top, curKey, doc.module)}<button class="lnk" data-tab="rules">Alle ${rs.length} Regeln ansehen</button></div>`);
     }
-    html.push(`<div class="sec"><h4>Instructions & Rechtsgrundlagen</h4><div class="note">Noch nicht angebunden – die EBA-Datenbank enthält keine Instructions-Texte. Sie werden in einem nächsten Schritt aus den ITS-Annexen ergänzt.</div></div>`);
+    const pos = inst.filter((x) => x[1].ax);
+    html.push(`<div class="sec"><h4>Instructions</h4>${pos.length ? instHtml(pos.slice(0, 1), true) + `<button class="lnk" data-tab="inst">Alle ${inst.length} Instructions ansehen</button>`
+      : inst.length ? `<div class="hint">${inst.length} allgemeine Hinweise zum Bogen.</div><button class="lnk" data-tab="inst">Ansehen</button>` : instEmpty()}</div>`);
   }
 
   if (S.dtab === "rules") {
@@ -788,17 +799,61 @@ function renderDetails(cell) {
   }
 
   if (S.dtab === "chg") html.push(chg);
+  if (S.dtab === "inst") {
+    if (!inst.length) html.push(`<div class="sec">${instEmpty()}</div>`);
+    const k2 = cellCodes(doc, cell);
+    const grp = [["r", `Zur Zeile r${k2.r}`], ["c", `Zur Spalte c${k2.c}`], ["s", `Zum Blatt s${k2.s}`], [null, `Zum Bogen ${tc(doc.code)} allgemein`]];
+    for (const [ax, title] of grp) {
+      const list = inst.filter((x) => x[1].ax === ax);
+      if (list.length) html.push(`<div class="sec"><h4>${esc(title)} <span class="n">${list.length}</span></h4>${instHtml(list)}</div>`);
+    }
+  }
 
   $("#dbody").innerHTML = html.join("");
   $("#dbody").scrollTop = 0;
   $$("#dbody .filt button").forEach((b) => b.onclick = () => { S.ruleFilter = b.dataset.f; renderDetails(cell); });
   $$("#dbody [data-tab]").forEach((b) => b.onclick = () => { S.dtab = b.dataset.tab; renderDetails(cell); });
+  $$("#dbody .imore").forEach((b) => b.onclick = () => { b.previousElementSibling.classList.remove("clamp"); b.remove(); });
   bindRuleRows($("#dbody"), curKey, doc.module);
   bindChips($("#dbody"));
   $$("#dbody .tag-row").forEach((el) => el.onclick = () => { S.linMode = "focus"; S.linFocus = el.dataset.t; setView("lineage"); });
   $$("#dbody [data-act=celllineage]").forEach((b) => b.onclick = () => { S.linRule = null; S.linMode = "cell"; setView("lineage"); });
   $$("#dbody [data-hp]").forEach((b) => b.onclick = () => openHier(b.dataset.hp, b.dataset.hi));
   $$("#dbody [data-act=dpsim]").forEach((b) => b.onclick = () => dpFromCell(cell));
+}
+
+// ------------------------------------------------------------------ Instructions
+function codeIn(codes, code) {
+  return codes.some((c) => Array.isArray(c) ? code >= c[0] && code <= c[1] : c === code);
+}
+function cellInstructions(doc, cell) {
+  if (!S.instBy?.size) return [];
+  const k = cellCodes(doc, cell);
+  const keys = [doc.code];
+  for (let i = doc.code.lastIndexOf("."); i > 4; i = doc.code.lastIndexOf(".", i - 1)) keys.push(doc.code.slice(0, i));
+  const out = [], seen = new Set();
+  for (const key of keys) for (const [it, l] of S.instBy.get(key) || []) {
+    const ok = !l.ax || (l.ax === "r" && codeIn(l.codes, k.r)) || (l.ax === "c" && codeIn(l.codes, k.c)) || (l.ax === "s" && k.s && codeIn(l.codes, k.s));
+    const id = it.id + (l.ax || "");
+    if (ok && !seen.has(id)) { seen.add(id); out.push([it, l]); }
+  }
+  const rank = { hoch: 0, mittel: 1, niedrig: 2 };
+  return out.sort((a, b) => (a[1].ax ? 0 : 1) - (b[1].ax ? 0 : 1) || rank[a[1].conf] - rank[b[1].conf]);
+}
+function instHtml(list, short) {
+  return list.map(([it, l]) => {
+    const long = it.text.length > 600 && short !== false;
+    const doc = S.inst.docs.find((d) => d.id === it.doc);
+    return `<div class="inst">
+      ${it.label ? `<div class="il">${esc(it.label)}</div>` : ""}
+      <div class="it2 ${long ? "clamp" : ""}">${esc(it.text)}</div>${long ? `<button class="lnk imore">mehr</button>` : ""}
+      ${it.legal?.length ? `<div class="ilegal">${it.legal.map((x) => `<span class="lg">§ ${esc(x)}</span>`).join("")}</div>` : ""}
+      <div class="isrc"><span class="cf ${l.conf}" title="Zuordnung: ${esc(l.how)}">${esc(l.conf)}</span>
+        ${esc(doc?.file || it.doc)}${it.sec ? " · " + esc(it.sec) : ""}${it.num ? ` · ${it.src === "tabelle" ? "Code" : "Abs."} ${esc(it.num)}` : ""}</div></div>`;
+  }).join("");
+}
+function instEmpty() {
+  return `<div class="note">Für diese Zelle sind noch keine Instructions verknüpft.${S.inst.items.length ? "" : `<br><br><b>So kommen sie hinein:</b> Word-Dateien der EBA (Annexe mit Instructions) nach <code class="c">data/instructions/${esc(S.meta.release.Code)}/</code> legen und <code class="c">start.bat</code> starten. Freitext (z. B. FINREP) und Tabellen (z. B. Asset Encumbrance) werden automatisch erkannt.`}</div>`;
 }
 
 function bindRuleRows(root, curKey, mod) {

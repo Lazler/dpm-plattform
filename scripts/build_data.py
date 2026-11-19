@@ -32,6 +32,8 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--raw", default="data/raw/4.4")
     ap.add_argument("--out", default="web/data")
+    ap.add_argument("--instructions", default="data/instructions",
+                    help="Ordner mit Word-Dateien (.docx); Unterordner je Release wird bevorzugt")
     args = ap.parse_args()
 
     con = duckdb.connect()
@@ -352,6 +354,20 @@ def main():
     with open(f"{args.out}/meta.json", "w", encoding="utf-8") as f:
         json.dump(meta, f, ensure_ascii=False, indent=1)
     print(f"Tabellen geschrieben: {len(written)} -> {args.out}")
+
+    # ------------------------------------------------------------------ Instructions (Word)
+    inst_dir = os.path.join(args.instructions, release["Code"])
+    if not os.path.isdir(inst_dir):
+        inst_dir = args.instructions
+    docs = [f for f in (os.listdir(inst_dir) if os.path.isdir(inst_dir) else []) if f.endswith(".docx") and not f.startswith("~$")]
+    if docs:
+        import subprocess
+        subprocess.run([sys.executable, os.path.join(os.path.dirname(__file__), "import_instructions.py"), inst_dir,
+                        "--meta", f"{args.out}/meta.json", "--out", f"{args.out}/instructions.json"], check=True)
+    else:
+        with open(f"{args.out}/instructions.json", "w", encoding="utf-8") as f:
+            json.dump({"docs": [], "items": [], "stats": {}}, f)
+        print(f"Instructions: keine Word-Dateien in {inst_dir}")
 
 
 if __name__ == "__main__":

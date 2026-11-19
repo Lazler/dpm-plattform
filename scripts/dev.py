@@ -32,7 +32,7 @@ def newest(path):
 def needs_build():
     if not os.path.exists(META):
         return True
-    src = max(newest(RAW), newest(os.path.join(ROOT, "scripts")))
+    src = max(newest(RAW), newest(os.path.join(ROOT, "scripts")), newest(os.path.join(ROOT, "data", "instructions")))
     return src > os.path.getmtime(META)
 
 

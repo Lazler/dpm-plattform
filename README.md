@@ -66,6 +66,7 @@ data/raw/4.4/               Parquet-Export der DPM-Datenbank (eine Datei je Tabe
 scripts/build_data.py       Aufbereitung: Layout, Zellen, Datenpunkte, Regeln, Lineage -> JSON
 scripts/build_extras.py     Release-Vergleich, Datenpunkt-Index, Hierarchien
 scripts/dpmxl.py            Parser für DPM-XL und Verbalisierung der Regeln (Deutsch)
+scripts/import_instructions.py  Import der Instructions aus Word (Tabellen und Freitext)
 scripts/dev.py              lokaler Start (Daten erzeugen + Server)
 tests/                      Unit-Tests und Rauchtest der Oberfläche
 web/                        Statische Web-App (kein Build-Schritt), Cytoscape für Graphen
@@ -75,5 +76,5 @@ docs/azure.md               Betriebskonzept und Kosten in Azure
 
 ## Hinweise zu den Daten
 
-- Instructions und Rechtsgrundlagen sind in der EBA-Datenbank nicht befüllt (`Document`, `Subdivision`, `Reference` leer) und folgen in einem nächsten Schritt.
+- Instructions sind in der EBA-Datenbank nicht befüllt (`Document`, `Subdivision`, `Reference` leer). Sie werden aus den Word-Annexen importiert: Dateien nach `data/instructions/<Release>/` legen, siehe [`docs/instructions.md`](docs/instructions.md).
 - Regeln: nur aktive Regeln der aktuellen Version (End-Release offen), Typ „validation“.
