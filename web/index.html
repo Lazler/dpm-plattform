@@ -37,38 +37,28 @@
     </aside>
 
     <div class="book">
-      <div class="ribbon" id="ribbon">
-        <button class="rb icon" id="toctoggle" title="Inhaltsverzeichnis ein-/ausblenden">☰</button>
-        <div class="rgrp">
-          <span class="rl">Regeln</span>
-          <div class="seg sm" id="layer">
-            <button data-l="off">Aus</button><button data-l="marker">Fehler-Marker</button><button data-l="heat">Heatmap</button>
-          </div>
-        </div>
-        <div class="rgrp">
-          <span class="rl" title="Änderungen seit einem früheren Release hervorheben">Vergleich seit</span>
-          <select id="cmpsel" aria-label="Release-Vergleich"><option value="">–</option></select>
-        </div>
-        <div class="rgrp grow">
-          <input id="find" type="search" placeholder="Im Bogen suchen …  (Strg+F)" aria-label="Im Bogen suchen">
-          <span class="findinfo" id="findinfo"></span>
-        </div>
-        <button class="rb icon" id="copyref" title="Zellbezug kopieren (Strg+C)" aria-label="Zellbezug kopieren">⧉</button>
-        <button class="rb icon" id="export" title="Bogen mit Datenpunkten und Regeln als CSV für Excel exportieren" aria-label="Als CSV exportieren">⤓</button>
+      <div class="sheethead">
+        <button class="rb icon" id="toctoggle" title="Inhaltsverzeichnis ein-/ausblenden" aria-label="Inhaltsverzeichnis">☰</button>
+        <div class="sh-title"><div class="sh-code" id="shcode">–</div><div class="sh-name"><span id="shname"></span><small id="shmod"></small></div></div>
+        <span class="status" id="status"></span>
+        <div class="sh-nav"><button class="rb icon" id="prevt" aria-label="Vorheriger Bogen">‹</button><button class="rb icon" id="nextt" aria-label="Nächster Bogen">›</button></div>
       </div>
-      <div class="formulabar">
-        <div class="namebox" id="namebox">–</div>
-        <div class="fx">fx</div>
-        <div class="fxval" id="fxval">Zelle anklicken oder mit den Pfeiltasten wählen</div>
+      <div class="toolbar" id="ribbon">
+        <div class="seg sm" id="layer" title="Regeln im Bogen anzeigen">
+          <button data-l="off">Regeln aus</button><button data-l="marker">Fehler-Marker</button><button data-l="heat">Heatmap</button>
+        </div>
+        <select id="cmpsel" aria-label="Release-Vergleich"><option value="">–</option></select>
+        <div class="findbox"><input id="find" type="search" placeholder="Im Bogen suchen …  (Strg+F)" aria-label="Im Bogen suchen"><span class="findinfo" id="findinfo"></span></div>
+        <div class="tb-right">
+          <div class="zoom"><button id="zminus" title="Verkleinern" aria-label="Verkleinern">−</button><span id="zval">100 %</span><button id="zplus" title="Vergrößern" aria-label="Vergrößern">+</button></div>
+          <button class="rb icon" id="copyref" title="Zellbezug kopieren (Strg+C)" aria-label="Zellbezug kopieren">⧉</button>
+          <button class="rb icon" id="export" title="Bogen mit Datenpunkten und Regeln als CSV für Excel exportieren" aria-label="Als CSV exportieren">⤓</button>
+        </div>
       </div>
+      <div class="selbar"><span class="sb-code" id="namebox">–</span><span class="sb-val" id="fxval"></span></div>
       <div class="cmpbar" id="cmpbar" hidden></div>
       <div class="zbar" id="zbar" hidden></div>
       <div class="gridwrap" id="gridwrap" tabindex="0" aria-label="Meldebogen"><div class="empty">Meldebogen wählen …</div></div>
-      <div class="bottombar">
-        <div class="tabs" id="tabs"></div>
-        <div class="status" id="status"></div>
-        <div class="zoom"><button id="zminus" title="Verkleinern">−</button><span id="zval">100 %</span><button id="zplus" title="Vergrößern">+</button></div>
-      </div>
     </div>
 
     <aside class="details" id="details" hidden>

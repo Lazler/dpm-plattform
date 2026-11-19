@@ -8,10 +8,43 @@ Zusatzauswertungen für den DPM Explorer:
 from __future__ import annotations
 
 import json
+import os
 import re
+import sys
+
+sys.path.insert(0, os.path.dirname(__file__))
+from dpmxl import canonical  # noqa: E402
 from collections import defaultdict
 
 OP_SYMBOL = {2: "+", 5: "−", 13: "=", 14: "≤", 15: "≥", 18: ">", 19: "<", 20: "≠"}
+
+
+CONTENT = {"new", "opened", "greyed", "dp", "sign"}  # dptech/dpmod gelten als technisch
+
+
+SYNONYMS = [("real estate", "immovable property"), ("recognised", "recognized"), ("encumberance", "encumbrance")]
+
+
+def _plain(s):
+    s = re.sub(r"[\s\-–_/,.;:()]+", " ", (s or "").lower()).strip()
+    for a_, b_ in SYNONYMS:
+        s = s.replace(a_, b_)
+    return s
+
+
+def _sim(a, b):
+    a, b = _plain(a), _plain(b)
+    if not a or not b:
+        return 0.0
+    if a in b or b in a:
+        return 0.9
+    tail = lambda t: t.split(" ", 1)[-1]  # "x. y" -> "y"
+    from difflib import SequenceMatcher
+    return max(SequenceMatcher(None, a, b).ratio(), SequenceMatcher(None, tail(a), b).ratio())
+
+
+def _metric(s):
+    return _plain(re.sub(r"\((flow|stock)\)", "", s or "", flags=re.I))
 
 
 def _norm(expr):
@@ -122,6 +155,28 @@ def build_diffs(c):
             ctx[r["ContextID"]].append([names.get(r["PropertyID"]), names.get(r["ItemID"])])
             ctx_key[r["ContextID"]].append((code_of(r["PropertyID"]), code_of(r["ItemID"])))
 
+        def dp_kind(x, y):
+            """dptech = nur Bezeichnungen (Dimension/Wert umbenannt) · dpmod = Modellierung (Dimension nur
+            ergänzt oder nur entfallen) · dp = inhaltlich (Wert ausgetauscht oder Kennzahl geändert)"""
+            on, nn = ctx.get(y["ctx"], []), ctx.get(x["ctx"], [])
+            same_metric = _metric(names.get(y["prop"])) == _metric(names.get(x["prop"]))
+            ren = [[p_, q_] for p_, i_ in on for q_, j_ in nn if _plain(i_) == _plain(j_) and p_ != q_]
+            ro = [i for _, i in on if _plain(i) not in {_plain(j) for _, j in nn}]
+            rn = [j for _, j in nn if _plain(j) not in {_plain(i) for _, i in on}]
+            for i in list(ro):  # ähnlich lautende Werte = Umbenennung
+                best = max(rn, key=lambda j: _sim(i, j), default=None)
+                if best is not None and _sim(i, best) >= 0.6:
+                    ren.append([i, best])
+                    ro.remove(i)
+                    rn.remove(best)
+            if not same_metric:
+                return "dp", ren
+            if not ro and not rn:
+                return "dptech", ren
+            if not ro or not rn:
+                return "dpmod", ren
+            return "dp", ren
+
         def sem(x):
             """inhaltlicher Schlüssel eines Datenpunkts: Kennzahl + Dimensionen über Codes"""
             return (code_of(x["prop"]), tuple(sorted(ctx_key.get(x["ctx"], []))))
@@ -129,7 +184,8 @@ def build_diffs(c):
         T = {}
         S = defaultdict(int)
         for code, tnow in now["tables"].items():
-            e = {"st": "same", "cells": {}, "removed": [], "labels": [], "dp": {}, "rules": {"add": [], "del": [], "chg": []}}
+            e = {"st": "same", "cells": {}, "removed": [], "labels": [], "dp": {},
+                 "rules": {"add": [], "del": [], "chg": [], "ren": [], "fmt": [], "sev": []}}
             if code not in old["tables"]:
                 e["st"] = "new"
                 S["tables_new"] += 1
@@ -149,8 +205,9 @@ def build_diffs(c):
                             types.append("greyed")
                         if not x["excl"] and not y["excl"]:
                             if sem(x) != sem(y):
-                                types.append("dp")
-                                e["dp"][x["CellID"]] = [names.get(y["prop"]), ctx.get(y["ctx"], [])]
+                                kind, ren = dp_kind(x, y)
+                                types.append(kind)
+                                e["dp"][x["CellID"]] = [names.get(y["prop"]), ctx.get(y["ctx"], []), ren]
                             if (x["sign"] or "") != (y["sign"] or ""):
                                 types.append("sign")
                     if types:
@@ -163,9 +220,29 @@ def build_diffs(c):
                         S["cells_removed"] += 1
                 for k, lab in ln.items():
                     if k in lo and lo[k] != lab:
-                        e["labels"].append([k[0], k[1], lo[k], lab])
-                        S["labels"] += 1
+                        tech = _plain(lo[k]) == _plain(lab)
+                        e["labels"].append([k[0], k[1], lo[k], lab, tech])
+                        S["labels_tech" if tech else "labels"] += 1
             T[code] = e
+
+        def canon(expr):
+            try:
+                return canonical(expr)
+            except Exception:  # noqa: BLE001
+                return _norm(expr)
+
+        now_c = {k: canon(r["expr"]) for k, r in now["rules"].items()}
+        old_c = {k: canon(o["expr"]) for k, o in old["rules"].items()}
+        gone_by_canon = defaultdict(list)
+        for k in old["rules"]:
+            if k not in now["rules"]:
+                gone_by_canon[old_c[k]].append(k)
+        renamed_old = set()
+
+        def put(tabs, key, val):
+            for t in tabs:
+                if t in T:
+                    T[t]["rules"][key].append(val)
 
         for k, r in now["rules"].items():
             cr = cur_by_code.get(k)
@@ -173,37 +250,50 @@ def build_diffs(c):
                 continue
             o = old["rules"].get(k)
             if not o:
-                for t in cr["tables"]:
-                    if t in T:
-                        T[t]["rules"]["add"].append(cr["id"])
-                S["rules_add"] += 1
+                cand = [x for x in gone_by_canon.get(now_c[k], []) if x not in renamed_old]
+                if cand:  # gleiche Logik unter neuem Regelcode
+                    renamed_old.add(cand[0])
+                    put(cr["tables"], "ren", {"id": cr["id"], "old": cand[0]})
+                    S["rules_ren"] += 1
+                    o = old["rules"][cand[0]]
+                else:
+                    put(cr["tables"], "add", cr["id"])
+                    S["rules_add"] += 1
+                    continue
             elif _norm(o["expr"]) != _norm(r["expr"]):
-                for t in set(cr["tables"]) | old_tabs.get(o["vid"], set()):
-                    if t in T:
-                        T[t]["rules"]["chg"].append({"id": cr["id"], "old": o["expr"]})
-                S["rules_chg"] += 1
+                tabs = set(cr["tables"]) | old_tabs.get(o["vid"], set())
+                if old_c[k] == now_c[k]:
+                    put(tabs, "fmt", {"id": cr["id"], "old": o["expr"]})
+                    S["rules_fmt"] += 1
+                else:
+                    put(tabs, "chg", {"id": cr["id"], "old": o["expr"]})
+                    S["rules_chg"] += 1
+            sev = {m: [o["sev"][m], s_] for m, s_ in r["sev"].items() if o["sev"].get(m) and o["sev"][m] != s_}
+            if sev:
+                put(cr["tables"], "sev", {"id": cr["id"], "ch": sev})
+                S["rules_sev"] += 1
         for k, o in old["rules"].items():
-            if k in now["rules"]:
+            if k in now["rules"] or k in renamed_old:
                 continue
             try:
                 vb = verb.rule(o["expr"])
             except Exception:  # noqa: BLE001
                 vb = None
-            item = {"code": k, "expr": o["expr"], "verbal": vb, "sev": o["sev"]}
-            for t in old_tabs.get(o["vid"], set()):
-                if t in T:
-                    T[t]["rules"]["del"].append(item)
+            put(old_tabs.get(o["vid"], set()), "del", {"code": k, "expr": o["expr"], "verbal": vb, "sev": o["sev"]})
             S["rules_del"] += 1
 
         removed_tables = [[k, v["Name"]] for k, v in old["tables"].items() if k not in now["tables"]]
         S["tables_removed"] = len(removed_tables)
         res = {}
         for code, e in T.items():
-            changed = e["cells"] or e["removed"] or e["labels"] or any(e["rules"].values())
-            if e["st"] == "new" or changed:
+            content = (any(set(ts) & CONTENT for ts in e["cells"].values()) or e["removed"]
+                       or any(not lab[4] for lab in e["labels"])
+                       or any(e["rules"][k] for k in ("add", "del", "chg", "sev")))
+            tech = e["cells"] or e["labels"] or e["rules"]["ren"] or e["rules"]["fmt"]
+            if e["st"] == "new" or content or tech:
                 if e["st"] != "new":
-                    e["st"] = "changed"
-                    S["tables_changed"] += 1
+                    e["st"] = "changed" if content else "tech"
+                    S["tables_changed" if content else "tables_tech"] += 1
                 res[code] = e
         doc = {"base": {"code": b["Code"], "date": str(b["Date"])}, "cur": {"code": cur["Code"]},
                "summary": dict(S), "removedTables": removed_tables, "tables": res}

@@ -29,7 +29,7 @@ const S = {
   view: null, ruleFilter: "all", cellRules: null, dtab: "ov", openRules: new Set(),
   layer: PREF.layer || "marker", zoom: PREF.zoom || 1, tocOpen: PREF.tocOpen !== false,
   collapsed: new Set(PREF.collapsed || []),
-  diff: null, diffIdx: [], cmpTypes: new Set(["new", "opened", "greyed", "sign", "lab", "rule"]),
+  diff: null, diffIdx: [], cmpTypes: new Set(),
   dp: null, dpf: { metric: null, dims: new Map(), text: "", mods: new Set(["FINREP9", "AE"]), open: new Set() },
   hier: null, hi: { cat: null, sub: null, hit: null, filter: "" },
   find: { hits: [], i: -1 },
@@ -201,23 +201,11 @@ function renderModSel() {
   renderToc();
 }
 
-function changeCount(e) {
-  return Object.keys(e.cells).filter((id) => e.cells[id].some((t) => S.cmpTypes.has(t))).length
-    + e.removed.length + e.labels.length + e.rules.add.length + e.rules.del.length + e.rules.chg.length;
-}
-function changeBadge(code) {
-  const e = S.diff?.tables[code];
-  if (!e) return "";
-  if (e.st === "new") return `<span class="cb nw">neu</span>`;
-  const n = changeCount(e);
-  return n ? `<span class="cb" title="Anzahl Änderungen">${n}</span>` : "";
-}
-
 function renderToc() {
   const f = $("#tocfilter").value.trim().toLowerCase();
   const tabs = modTables(S.mod);
   const only = S.diff && $("#cmponly").checked;
-  const match = (x) => (!only || (S.diff.tables[x.code] && (S.diff.tables[x.code].st === "new" || changeCount(S.diff.tables[x.code]))))
+  const match = (x) => (!only || (diffInfo(x.code) && (S.diff.tables[x.code].st === "new" || diffInfo(x.code).content)))
     && (!f || (x.code + " " + tc(x.code) + " " + x.name).toLowerCase().includes(f));
   const groupOf = (t) => t.abstract ? (tabs.find((k) => k.parent === t.code)?.group || t.group) : t.group;
   const groups = [];
@@ -249,10 +237,13 @@ const tocItem = (t, child) => `<div class="it ${child ? "child" : ""} ${S.doc?.c
   <b>${esc(tc(t.code))}</b><span class="nm">${esc(t.name)}</span>${changeBadge(t.code)}</div>`;
 
 function renderTabs() {
-  const tabs = modTables(S.mod).filter((t) => !t.abstract);
-  $("#tabs").innerHTML = tabs.map((t) => `<button data-t="${t.code}" class="${t.code === S.doc?.code ? "on" : ""}" title="${esc(t.name)}">${esc(tc(t.code))}</button>`).join("");
-  $$("#tabs button").forEach((b) => b.onclick = () => openTable(b.dataset.t));
-  $("#tabs .on")?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  const doc = S.doc, tabs = modTables(S.mod).filter((t) => !t.abstract), i = tabs.findIndex((t) => t.code === doc?.code);
+  $("#shcode").textContent = tc(doc.code);
+  $("#shname").textContent = doc.name;
+  $("#shmod").textContent = `${MOD_LABEL[doc.module] || doc.module} · ${tabs[i]?.group?.replace("FinRep - ", "FINREP – ") || ""}`;
+  const prev = tabs[(i - 1 + tabs.length) % tabs.length], next = tabs[(i + 1) % tabs.length];
+  $("#prevt").title = `Vorheriger Bogen: ${tc(prev.code)} (Strg+Bild↑)`; $("#prevt").onclick = () => openTable(prev.code);
+  $("#nextt").title = `Nächster Bogen: ${tc(next.code)} (Strg+Bild↓)`; $("#nextt").onclick = () => openTable(next.code);
 }
 
 // ------------------------------------------------------------------ Ribbon, Zoom, Suche im Bogen
@@ -493,8 +484,8 @@ async function openTable(code, target = {}, opt = {}) {
   if (cell) selectCell(cell, "center", true);
   else {
     $("#details").hidden = true;
-    $("#namebox").textContent = tc(doc.code);
-    $("#fxval").textContent = doc.name;
+    $("#namebox").textContent = "–";
+    $("#fxval").innerHTML = '<span class="muted">Zelle anklicken oder mit den Pfeiltasten wählen</span>';
   }
   if (!opt.noHash) nav(sheetHash(), changed);
 }
@@ -523,25 +514,16 @@ function ruleSev(r, mod) { return r.sev[mod] || Object.values(r.sev)[0]; }
 function renderGrid() {
   const doc = S.doc, L = buildLayout(doc);
   doc.L = L;
-  const D = S.diff?.tables[doc.code];
-  const ruleChCells = new Set();
-  if (D && S.cmpTypes.has("rule")) for (const id of [...D.rules.add, ...D.rules.chg.map((x) => x.id)]) for (const c of S.rules[id]?.cells || []) ruleChCells.add(c);
-  const labCh = new Map((S.cmpTypes.has("lab") ? D?.labels || [] : []).map((l) => [`${l[0]}|${l[1]}`, l[2]]));
-  const chCls = (c) => {
-    if (!D) return "";
-    const t = (D.cells[c.id] || []).filter((x) => S.cmpTypes.has(x)).map((x) => "ch-" + x);
-    if (ruleChCells.has(c.id)) t.push("ch-rule");
-    return t.join(" ");
-  };
+  const DI = diffInfo(doc.code);
+  const labCh = new Map(DI ? [...DI.labs].filter(([, l]) => S.cmpTypes.has(l.type)).map(([k, l]) => [k, l.old]) : []);
+  const chCls = (c) => DI ? [...(DI.cellTypes.get(c.id) || [])].filter((t) => S.cmpTypes.has(t)).map((t) => "ch-" + t).join(" ") : "";
   const ncols = 2 + L.cols.length;
   const sheetKey = doc.sheets.length ? S.sheet : "";
   let rn = 0, nRep = 0;
   const allRules = new Set();
   const out = [];
-  out.push(`<table class="xl" role="grid"><thead><tr><th class="corner"></th>${Array.from({ length: ncols }, (_, i) => `<th class="col ${i === 0 ? "fa" : i === 1 ? "fb" : ""}" data-ci="${i}">${colName(i)}</th>`).join("")}</tr></thead><tbody>`);
-  const row = (inner, attrs = "") => `<tr ${attrs}><th class="rn">${++rn}</th>${inner}</tr>`;
-  out.push(row(`<td class="title" colspan="${ncols}">${esc(tc(doc.code))} – ${esc(doc.name)}</td>`));
-  out.push(row(`<td class="subtitle" colspan="${ncols}">${esc(MOD_LABEL[doc.module] || doc.module)} · Release ${esc(S.meta.release.Code)}${doc.sheets.length ? " · Blatt: " + esc(doc.hById.get(S.sheet)?.label) : ""}</td>`));
+  out.push(`<table class="xl" role="grid"><tbody>`);
+  const row = (inner, attrs = "") => (rn++, `<tr ${attrs}>${inner}</tr>`);
   L.hrows.forEach((hr, d) => {
     let inner = "";
     if (d === 0) inner += `<td class="lb lb1" rowspan="${L.D + 1}"></td><td class="lb lb2" rowspan="${L.D + 1}"></td>`;
@@ -554,7 +536,7 @@ function renderGrid() {
     }
     out.push(row(inner, `class="hdr"`));
   });
-  out.push(row(L.cols.map((h) => `<td class="hc ${h.key ? "key" : ""}">${esc(h.code || "")}</td>`).join(""), `class="hdr"`));
+  out.push(row(L.cols.map((h, i) => `<td class="hc ${h.key ? "key" : ""}" data-ci="${i}">${esc(h.code || "")}</td>`).join(""), `class="hdr codes"`));
 
   const dataCells = (rid) => L.cols.map((h) => {
     const c = doc.cellMap.get(`${rid ?? ""}|${h.id}|${sheetKey ?? ""}`);
@@ -612,7 +594,7 @@ function renderGrid() {
 function applyFreeze() {
   const tbl = $("#gridwrap table");
   if (!tbl || !tbl.offsetParent) return;
-  let top = tbl.tHead.offsetHeight;
+  let top = 0;
   for (const tr of $$("tr.hdr", tbl)) {
     for (const c of tr.children) c.style.top = top + "px";
     top += tr.offsetHeight;
@@ -623,7 +605,7 @@ window.addEventListener("resize", () => requestAnimationFrame(applyFreeze));
 // ------------------------------------------------------------------ Zellauswahl & Details
 function selectCell(cell, scroll, noHash) {
   $$("#gridwrap td.sel").forEach((x) => x.classList.remove("sel"));
-  $$("#gridwrap tr.sel, #gridwrap th.col.sel").forEach((x) => x.classList.remove("sel"));
+  $$("#gridwrap tr.sel, #gridwrap td.hc.sel").forEach((x) => x.classList.remove("sel"));
   S.sel = cell;
   if (!noHash && S.view === "sheet") nav(sheetHash(), false);
   if (!cell) return;
@@ -633,14 +615,14 @@ function selectCell(cell, scroll, noHash) {
   if (td) {
     td.classList.add("sel");
     td.parentElement.classList.add("sel");
-    const ci = [...td.parentElement.children].indexOf(td) - 1;
-    $(`#gridwrap th.col[data-ci="${ci}"]`)?.classList.add("sel");
+    const ci = [...td.parentElement.children].indexOf(td) - 2;
+    $(`#gridwrap td.hc[data-ci="${ci}"]`)?.classList.add("sel");
     if (scroll) scrollCellIntoView(td, scroll);
   }
   const k = cellCodes(doc, cell);
-  $("#namebox").textContent = `${tc(doc.code)} · r${k.r} · c${k.c}${k.s ? " · s" + k.s : ""}`;
-  const v = doc.vars[cell.var];
-  $("#fxval").textContent = v ? [v.metric[0], ...v.dims.map((d) => `${d[0]}: ${d[2]}`)].join("  |  ") : (cell.excl ? "graue Zelle – nicht zu melden" : "–");
+  const rlab = S.lab.get(`${doc.code}|r|${k.r}`) || "", clab = S.lab.get(`${doc.code}|c|${k.c}`) || "";
+  $("#namebox").textContent = `r${k.r} · c${k.c}${k.s ? " · s" + k.s : ""}`;
+  $("#fxval").innerHTML = `<b>${esc(rlab)}</b> <span class="x">×</span> <b>${esc(clab)}</b>${cell.excl ? ' <span class="badge grey">grau</span>' : ""}`;
   $("#details").hidden = false;
   S.openRules = new Set();
   renderDetails(cell);
@@ -651,7 +633,7 @@ function scrollCellIntoView(td, mode) {
   const wrap = $("#gridwrap");
   const tbl = $("table", wrap);
   const hdrs = $$("tr.hdr", tbl);
-  const topFixed = tbl.tHead.offsetHeight + hdrs.reduce((a, tr) => a + tr.offsetHeight, 0);
+  const topFixed = hdrs.reduce((a, tr) => a + tr.offsetHeight, 0);
   const rl = $("td.rl", tbl);
   const leftFixed = rl ? rl.offsetLeft + rl.offsetWidth : 0;
   const r = td.getBoundingClientRect(), w = wrap.getBoundingClientRect();
@@ -996,11 +978,44 @@ function initSearch() {
 }
 
 // ------------------------------------------------------------------ Release-Vergleich
+// Änderungsarten: inhaltlich (standardmäßig sichtbar) und technisch (standardmäßig ausgeblendet)
 const CH_TYPES = [
-  ["new", "Neue Zelle", "#c9ecd2"], ["opened", "Nicht mehr grau", "#c9ecd2"], ["greyed", "Neu grau", "#e7b3ad"],
-  ["dp", "Datenpunkt-Definition", "#d6e4fb"], ["sign", "Vorzeichen", "#e8d4f1"], ["lab", "Bezeichnung", "#fff1a8"],
-  ["rule", "Regel neu/geändert", "#8e44ad"],
+  ["new", "Neue Zelle", "#bfe6c9", true], ["opened", "Nicht mehr grau", "#bfe6c9", true], ["greyed", "Neu grau", "#e7b3ad", true],
+  ["dp", "Datenpunkt inhaltlich", "#c9dbf7", true], ["sign", "Vorzeichen", "#e2cdef", true], ["lab", "Bezeichnung", "#fff1a8", true],
+  ["rule", "Regel neu/geändert", "#8e44ad", true], ["sev", "Schweregrad", "#c0392b", true],
+  ["dpmod", "Modellierung", "#efe6d2", false], ["dptech", "Nur umbenannt", "#ececec", false],
+  ["labtech", "Schreibweise", "#f3f0dc", false], ["ruletech", "Regel umcodiert", "#d9cfe3", false],
 ];
+const CH = Object.fromEntries(CH_TYPES.map(([k, l, c, content]) => [k, { l, c, content }]));
+S.cmpTypes = new Set(CH_TYPES.filter((t) => t[3]).map((t) => t[0]));
+
+// Änderungen eines Bogens je Zelle (inkl. Regeln und Bezeichnungen) – Grundlage für Raster, Zähler und Listen
+function diffInfo(code) {
+  const e = S.diff?.tables[code];
+  if (!e) return null;
+  if (e._info) return e._info;
+  const R = e.rules, cellTypes = new Map();
+  const add = (id, t) => { if (!cellTypes.has(id)) cellTypes.set(id, new Set()); cellTypes.get(id).add(t); };
+  for (const [id, ts] of Object.entries(e.cells)) ts.forEach((t) => add(+id, t));
+  for (const id of [...R.add, ...R.chg.map((x) => x.id)]) (S.rules[id]?.cells || []).forEach((c) => add(c, "rule"));
+  for (const x of R.sev || []) (S.rules[x.id]?.cells || []).forEach((c) => add(c, "sev"));
+  for (const x of [...(R.ren || []), ...(R.fmt || [])]) (S.rules[x.id]?.cells || []).forEach((c) => add(c, "ruletech"));
+  const labs = new Map(e.labels.map((l) => [`${l[0]}|${l[1]}`, { old: l[2], type: l[4] ? "labtech" : "lab" }]));
+  const counts = {};
+  for (const ts of cellTypes.values()) for (const t of ts) counts[t] = (counts[t] || 0) + 1;
+  for (const l of labs.values()) counts[l.type] = (counts[l.type] || 0) + 1;
+  counts.rule = R.add.length + R.chg.length; counts.sev = (R.sev || []).length; counts.ruletech = (R.ren || []).length + (R.fmt || []).length;
+  const content = Object.entries(counts).filter(([k, n]) => n && CH[k]?.content).reduce((a, [, n]) => a + n, 0) + e.removed.length + R.del.length;
+  return (e._info = { e, cellTypes, labs, counts, content });
+}
+
+function changeCount(e) { return diffInfo(Object.keys(S.diff.tables).find((k) => S.diff.tables[k] === e))?.content || 0; }
+function changeBadge(code) {
+  const d = diffInfo(code);
+  if (!d) return "";
+  if (d.e.st === "new") return `<span class="cb nw">neu</span>`;
+  return d.content ? `<span class="cb" title="inhaltliche Änderungen">${d.content}</span>` : `<span class="cb tech" title="nur technische Änderungen">tech</span>`;
+}
 
 function initCompare() {
   const sel = $("#cmpsel");
@@ -1029,84 +1044,122 @@ function renderCmpbar() {
   const bar = $("#cmpbar");
   if (!S.diff || !S.doc) { bar.hidden = true; return; }
   bar.hidden = false;
-  const e = S.diff.tables[S.doc.code];
+  const d = diffInfo(S.doc.code);
   const head = `<b>Δ seit ${esc(S.diff.base.code)}</b>`;
-  const off = `<button class="lnk" id="cmpoff">Vergleich beenden</button>`;
-  if (!e) { bar.innerHTML = `${head}: in diesem Bogen keine Änderungen. ${off}`; $("#cmpoff").onclick = () => { $("#cmpsel").value = ""; setCompare(""); }; return; }
-  if (e.st === "new") { bar.innerHTML = `${head}: <b>Bogen ist neu</b> (gab es in ${esc(S.diff.base.code)} noch nicht). ${off}`; $("#cmpoff").onclick = () => { $("#cmpsel").value = ""; setCompare(""); }; return; }
-  const cnt = {};
-  for (const ts of Object.values(e.cells)) for (const t of ts) cnt[t] = (cnt[t] || 0) + 1;
-  cnt.lab = e.labels.length;
-  cnt.rule = e.rules.add.length + e.rules.chg.length;
-  const toggles = CH_TYPES.filter(([k]) => cnt[k]).map(([k, l, col]) =>
-    `<span class="t ${S.cmpTypes.has(k) ? "" : "off"}" data-k="${k}" title="${k === "dp" ? "Kennzahl oder Dimensionen des Datenpunkts geändert (beim Umbau auf DPM 2.0 sehr häufig)" : "Ein-/ausblenden"}"><i style="background:${col}"></i>${l}: ${cnt[k]}</span>`).join("");
-  const extra = [];
-  if (e.removed.length) extra.push(`${e.removed.length} Zelle(n) entfallen`);
-  if (e.rules.del.length) extra.push(`${e.rules.del.length} Regel(n) entfallen`);
-  bar.innerHTML = `${head}: ${toggles} ${extra.length ? `<span>· ${extra.join(" · ")}</span>` : ""} <button class="lnk" id="chlist">Änderungsliste</button> ${off}`;
+  const off = `<button class="lnk" id="cmpoff">beenden</button>`;
+  const done = () => $("#cmpoff").onclick = () => { $("#cmpsel").value = ""; setCompare(""); };
+  if (!d) { bar.innerHTML = `${head} <span class="muted">In diesem Bogen keine Änderungen.</span> ${off}`; done(); return; }
+  if (d.e.st === "new") { bar.innerHTML = `${head} <b>Bogen ist neu</b> <span class="muted">(gab es in ${esc(S.diff.base.code)} noch nicht)</span> ${off}`; done(); return; }
+  const chip = ([k]) => d.counts[k] ? `<span class="t ${S.cmpTypes.has(k) ? "" : "off"}" data-k="${k}"><i style="background:${CH[k].c}"></i>${CH[k].l} <b>${d.counts[k]}</b></span>` : "";
+  const content = CH_TYPES.filter((t) => t[3]).map(chip).join(""), tech = CH_TYPES.filter((t) => !t[3]).map(chip).join("");
+  const extra = [d.e.removed.length && `${d.e.removed.length} Zellen entfallen`, d.e.rules.del.length && `${d.e.rules.del.length} Regeln entfallen`].filter(Boolean);
+  bar.innerHTML = `${head}
+    <span class="grp">${content || '<span class="muted">keine inhaltlichen Änderungen</span>'}${extra.length ? `<span class="muted">· ${extra.join(" · ")}</span>` : ""}</span>
+    ${tech ? `<span class="grp tech"><span class="muted">technisch:</span>${tech}</span>` : ""}
+    <button class="lnk" id="chlist">Änderungsliste</button> ${off}`;
   $$(".t", bar).forEach((t) => t.onclick = () => {
     S.cmpTypes.has(t.dataset.k) ? S.cmpTypes.delete(t.dataset.k) : S.cmpTypes.add(t.dataset.k);
     const sel = S.sel; renderGrid(); renderToc(); if (sel) selectCell(sel, false, true);
   });
   $("#chlist").onclick = showChangeList;
-  $("#cmpoff").onclick = () => { $("#cmpsel").value = ""; setCompare(""); };
+  done();
 }
 
-function dimsDiff(oldDims, newDims) {
-  const o = new Set(oldDims.map((d) => `${d[0]}: ${d[1]}`)), n = new Set(newDims.map((d) => `${d[0]}: ${d[2]}`));
-  const out = [];
-  for (const x of n) out.push(o.has(x) ? `<li>${esc(x)}</li>` : `<li class="plus">+ ${esc(x)}</li>`);
-  for (const x of o) if (!n.has(x)) out.push(`<li class="minus">− ${esc(x)}</li>`);
-  return `<ul>${out.join("")}</ul>`;
+// Vorher/Nachher eines Datenpunkts – Umbenennungen werden zugeordnet, nur echte Unterschiede hervorgehoben
+function dpCompare(old, v) {
+  const [om, od, ren = []] = old;
+  const renMap = new Map(ren.map(([a, b]) => [a, b]));
+  const rows = [], usedOld = new Set();
+  const norm = (s) => (s || "").toLowerCase();
+  for (const d of v.dims) {
+    let o = od.find((x, i) => !usedOld.has(i) && (x[0] === d[0] || renMap.get(x[0]) === d[0]) && (norm(x[1]) === norm(d[2]) || renMap.get(x[1]) === d[2]));
+    if (!o) o = od.find((x, i) => !usedOld.has(i) && (x[0] === d[0] || renMap.get(x[0]) === d[0]));
+    if (!o) o = od.find((x, i) => !usedOld.has(i) && (norm(x[1]) === norm(d[2]) || renMap.get(x[1]) === d[2]));
+    if (o) usedOld.add(od.indexOf(o));
+    rows.push({ dim: d[0], oldDim: o?.[0], before: o?.[1], after: d[2] });
+  }
+  od.forEach((o, i) => { if (!usedOld.has(i)) rows.push({ dim: o[0], before: o[1], after: null }); });
+  const cls = (r) => r.before == null ? "add" : r.after == null ? "del" : norm(r.before) === norm(r.after) || renMap.get(r.before) === r.after ? (r.before === r.after ? "" : "ren") : "chg";
+  const lab = { add: "neu", del: "entfallen", chg: "geändert", ren: "umbenannt" };
+  return `<table class="cmpt"><thead><tr><th>Merkmal</th><th>vorher</th><th>jetzt</th></tr></thead><tbody>
+    <tr class="${om === v.metric[0] ? "" : "chg"}"><td>Kennzahl</td><td>${esc(om)}</td><td>${esc(v.metric[0])}</td></tr>
+    ${rows.map((r) => { const c = cls(r); return `<tr class="${c}"><td>${esc(r.dim)}${r.oldDim && r.oldDim !== r.dim ? `<small>vorher: ${esc(r.oldDim)}</small>` : ""}</td>
+      <td>${r.before == null ? "–" : esc(r.before)}</td><td>${r.after == null ? "–" : esc(r.after)}${c ? ` <span class="tagc ${c}">${lab[c]}</span>` : ""}</td></tr>`; }).join("")}
+  </tbody></table>`;
 }
 
 function cellChangeHtml(cell) {
   if (!S.diff) return "";
-  const e = S.diff.tables[S.doc.code];
-  if (!e) return "";
-  const types = e.cells[cell.id] || [];
-  const ruleNew = e.rules.add.filter((id) => cell.rules.includes(id));
-  const ruleChg = e.rules.chg.filter((x) => cell.rules.includes(x.id));
-  if (!types.length && !ruleNew.length && !ruleChg.length && e.st !== "new") return "";
-  const L = Object.fromEntries(CH_TYPES.map(([k, l]) => [k, l]));
-  const items = [];
-  if (e.st === "new") items.push("<li>Meldebogen ist neu</li>");
-  for (const t of types) if (t !== "dp") items.push(`<li>${esc(L[t])} geändert</li>`.replace("Neue Zelle geändert", "Neue Zelle").replace("Nicht mehr grau geändert", "Nicht mehr grau").replace("Neu grau geändert", "Neu grau"));
-  let dp = "";
-  if (types.includes("dp") && e.dp[cell.id]) {
-    const v = S.doc.vars[cell.var], [om, od] = e.dp[cell.id];
-    dp = `<div style="margin-top:6px"><b>Datenpunkt-Definition geändert</b>${om !== v.metric[0] ? ` – Kennzahl: <span class="minus">${esc(om)}</span> → <span class="plus">${esc(v.metric[0])}</span>` : ""}${dimsDiff(od, v.dims)}</div>`;
+  const d = diffInfo(S.doc.code);
+  if (!d) return "";
+  const e = d.e, types = e.cells[cell.id] || [];
+  const R = e.rules, has = (id) => cell.rules.includes(id);
+  const ruleNew = R.add.filter(has), ruleChg = R.chg.filter((x) => has(x.id)), ruleSev = (R.sev || []).filter((x) => has(x.id));
+  const ruleTech = [...(R.ren || []), ...(R.fmt || [])].filter((x) => has(x.id));
+  if (!types.length && !ruleNew.length && !ruleChg.length && !ruleSev.length && !ruleTech.length && e.st !== "new") return "";
+  const out = [];
+  const kind = types.find((t) => t.startsWith("dp"));
+  const verdict = types.some((t) => CH[t]?.content) || ruleNew.length || ruleChg.length || ruleSev.length
+    ? ["c", "Inhaltlich geändert"] : ["t", "Nur technisch geändert"];
+  if (e.st === "new") out.push(`<div class="verdict c">Bogen ist neu seit ${esc(S.diff.base.code)}</div>`);
+  else out.push(`<div class="verdict ${verdict[0]}">${verdict[1]} <span>seit ${esc(S.diff.base.code)}</span></div>`);
+  const simple = types.filter((t) => !t.startsWith("dp")).map((t) => CH[t]?.l).filter(Boolean);
+  if (simple.length) out.push(`<div class="chline">${simple.map((l) => `<span class="tagc chg">${esc(l)}</span>`).join(" ")}</div>`);
+  if (kind && e.dp[cell.id]) {
+    const v = S.doc.vars[cell.var], ren = e.dp[cell.id][2] || [];
+    if (kind === "dptech") {
+      out.push(`<div class="sec"><h4>Datenpunkt</h4><div class="muted">Gleiche Bedeutung, nur Bezeichnungen geändert:</div>
+        <ul class="renl">${ren.map(([a, b]) => `<li><span>${esc(a)}</span> → <b>${esc(b)}</b></li>`).join("") || "<li>Codes neu vergeben</li>"}</ul></div>`);
+    } else {
+      out.push(`<div class="sec"><h4>Datenpunkt · ${kind === "dpmod" ? "Modellierung angepasst" : "inhaltlich geändert"}</h4>
+        ${kind === "dpmod" ? `<div class="muted" style="margin-bottom:6px">Dimension ergänzt oder entfallen, Werte sonst gleich – meist eine Präzisierung im DPM.</div>` : ""}
+        ${dpCompare(e.dp[cell.id], v)}</div>`);
+    }
   }
   const rl = (ids) => ids.map((id) => ruleRow(S.rules[id], null, S.doc.module)).join("");
-  return `${items.length || dp ? `<div class="sec"><h4>Änderungen seit ${esc(S.diff.base.code)}</h4><div class="note chg">${items.length ? `<ul>${items.join("")}</ul>` : ""}${dp}</div></div>` : ""}
-    ${ruleNew.length ? `<div class="sec"><h4>Neue Regeln <span class="n">${ruleNew.length}</span></h4>${rl(ruleNew)}</div>` : ""}
-    ${ruleChg.length ? `<div class="sec"><h4>Geänderte Regeln <span class="n">${ruleChg.length}</span></h4>${ruleChg.map((x) => `${ruleRow(S.rules[x.id], null, S.doc.module)}<details class="pre"><summary>bisheriger Ausdruck</summary><pre class="x">${esc(x.old)}</pre></details>`).join("")}</div>` : ""}`;
+  if (ruleNew.length) out.push(`<div class="sec"><h4>Neue Regeln <span class="n">${ruleNew.length}</span></h4>${rl(ruleNew)}</div>`);
+  if (ruleChg.length) out.push(`<div class="sec"><h4>Geänderte Regeln <span class="n">${ruleChg.length}</span></h4>${ruleChg.map((x) => `${ruleRow(S.rules[x.id], null, S.doc.module)}<details class="pre"><summary>bisheriger Ausdruck</summary><pre class="x">${esc(x.old)}</pre></details>`).join("")}</div>`);
+  if (ruleSev.length) out.push(`<div class="sec"><h4>Schweregrad geändert <span class="n">${ruleSev.length}</span></h4>${ruleSev.map((x) => `<div class="sevch"><b>${esc(S.rules[x.id].code)}</b> ${Object.entries(x.ch).map(([m, [a, b]]) => `${esc(MOD_LABEL[m] || m)}: ${sevLabel(a)} → <b>${sevLabel(b)}</b>`).join(" · ")}</div>`).join("")}</div>`);
+  if (ruleTech.length) out.push(`<details class="sec techd"><summary>${ruleTech.length} Regel(n) nur technisch geändert (umcodiert oder andere Schreibweise)</summary>
+    ${ruleTech.map((x) => `<div class="sevch"><b>${esc(S.rules[x.id].code)}</b> ${x.old && !x.old.includes("{") ? `ersetzt ${esc(x.old)} – gleiche Logik` : "gleiche Logik, andere Schreibweise"}</div>`).join("")}</details>`);
+  return out.join("");
 }
+const sevLabel = (s) => s === "error" ? "Fehler" : "Warnung";
 
 function showChangeList() {
-  const doc = S.doc, e = S.diff?.tables[doc.code];
-  if (!e) return;
+  const doc = S.doc, d = diffInfo(doc.code);
+  if (!d) return;
+  const e = d.e;
   $("#details").hidden = false;
   $("#dtabs").hidden = true;
   $("#dtitle").innerHTML = `<div class="ttl"><b>Änderungen in ${esc(tc(doc.code))}</b></div><div class="tn">Release ${esc(S.diff.base.code)} → ${esc(S.diff.cur.code)}</div>`;
-  const L = Object.fromEntries(CH_TYPES.map(([k, l]) => [k, l]));
   const byType = {};
-  for (const [id, ts] of Object.entries(e.cells)) for (const t of ts) (byType[t] = byType[t] || []).push(+id);
+  for (const [id, ts] of d.cellTypes) for (const t of ts) (byType[t] = byType[t] || []).push(id);
   const cellTag = (id) => {
     const c = doc.cById.get(id); if (!c) return "";
     const k = cellCodes(doc, c);
     return `<span class="tag" data-t="${doc.code}" data-r="${k.r}" data-c="${k.c}" data-s="${k.s}" data-tip="${esc((S.lab.get(`${doc.code}|r|${k.r}`) || "") + "\n" + (S.lab.get(`${doc.code}|c|${k.c}`) || ""))}">r${k.r} · c${k.c}${k.s ? " · s" + k.s : ""}</span>`;
   };
-  const h = [];
-  for (const [k] of CH_TYPES) if (byType[k]) h.push(`<div class="sec"><h4>${esc(L[k])} <span class="n">${byType[k].length}</span></h4><div>${byType[k].slice(0, 150).map(cellTag).join("")}${byType[k].length > 150 ? " …" : ""}</div></div>`);
-  if (e.removed.length) h.push(`<div class="sec"><h4>Entfallene Zellen <span class="n">${e.removed.length}</span></h4><div class="chg"><ul>${e.removed.map((x) => `<li><span class="minus">r${esc(x[0])} · c${esc(x[1])}${x[2] ? " · s" + esc(x[2]) : ""}</span><br><small>${esc(x[3])} / ${esc(x[4])}</small></li>`).join("")}</ul></div></div>`);
-  if (e.labels.length) h.push(`<div class="sec"><h4>Geänderte Bezeichnungen <span class="n">${e.labels.length}</span></h4><div class="chg"><ul>${e.labels.map((l) => `<li><code class="c">${l[0]}${esc(l[1])}</code> <span class="minus">${esc(l[2])}</span> → <span class="plus">${esc(l[3])}</span></li>`).join("")}</ul></div></div>`);
-  const mod = doc.module;
+  const cellsSec = (k) => byType[k] ? `<div class="sec"><h4>${esc(CH[k].l)} <span class="n">${byType[k].length}</span></h4><div>${byType[k].slice(0, 120).map(cellTag).join("")}${byType[k].length > 120 ? " …" : ""}</div></div>` : "";
+  const mod = doc.module, R = e.rules;
   S.openRules = new Set();
-  if (e.rules.add.length) h.push(`<div class="sec"><h4>Neue Regeln <span class="n">${e.rules.add.length}</span></h4>${e.rules.add.map((id) => ruleRow(S.rules[id], null, mod)).join("")}</div>`);
-  if (e.rules.chg.length) h.push(`<div class="sec"><h4>Geänderte Regeln <span class="n">${e.rules.chg.length}</span></h4>${e.rules.chg.map((x) => `${ruleRow(S.rules[x.id], null, mod)}<details class="pre" style="margin:-2px 0 8px 10px"><summary>bisheriger Ausdruck</summary><pre class="x">${esc(x.old)}</pre></details>`).join("")}</div>`);
-  if (e.rules.del.length) h.push(`<div class="sec"><h4>Entfallene Regeln <span class="n">${e.rules.del.length}</span></h4>${e.rules.del.map((r) =>
-    `<div class="rule"><div class="rh"><b>${esc(r.code)}</b><span class="badge grey">entfallen</span></div><div class="rv">${r.verbal ? verbal(r.verbal) : ""}</div><details><summary>DPM-XL</summary><pre class="x">${esc(r.expr)}</pre></details></div>`).join("")}<div class="hint">Verbalisierung entfallener Regeln mit den heutigen Bezeichnungen.</div></div>`);
+  const h = [];
+  h.push(`<div class="verdict ${d.content ? "c" : "t"}">${d.content ? `${d.content} inhaltliche Änderungen` : "Nur technische Änderungen"}</div>`);
+  for (const k of ["new", "opened", "greyed", "dp", "sign"]) h.push(cellsSec(k));
+  if (e.removed.length) h.push(`<div class="sec"><h4>Entfallene Zellen <span class="n">${e.removed.length}</span></h4><div class="chg"><ul>${e.removed.map((x) => `<li><span class="minus">r${esc(x[0])} · c${esc(x[1])}${x[2] ? " · s" + esc(x[2]) : ""}</span><br><small>${esc(x[3])} / ${esc(x[4])}</small></li>`).join("")}</ul></div></div>`);
+  const labs = e.labels.filter((l) => !l[4]);
+  if (labs.length) h.push(`<div class="sec"><h4>Geänderte Bezeichnungen <span class="n">${labs.length}</span></h4><div class="chg"><ul>${labs.map((l) => `<li><code class="c">${l[0]}${esc(l[1])}</code> <span class="minus">${esc(l[2])}</span> → <span class="plus">${esc(l[3])}</span></li>`).join("")}</ul></div></div>`);
+  if (R.add.length) h.push(`<div class="sec"><h4>Neue Regeln <span class="n">${R.add.length}</span></h4>${R.add.map((id) => ruleRow(S.rules[id], null, mod)).join("")}</div>`);
+  if (R.chg.length) h.push(`<div class="sec"><h4>Geänderte Regeln <span class="n">${R.chg.length}</span></h4>${R.chg.map((x) => `${ruleRow(S.rules[x.id], null, mod)}<details class="pre" style="margin:-2px 0 8px 10px"><summary>bisheriger Ausdruck</summary><pre class="x">${esc(x.old)}</pre></details>`).join("")}</div>`);
+  if ((R.sev || []).length) h.push(`<div class="sec"><h4>Schweregrad geändert <span class="n">${R.sev.length}</span></h4>${R.sev.map((x) => `<div class="sevch"><b>${esc(S.rules[x.id].code)}</b> ${Object.entries(x.ch).map(([m, [a, b]]) => `${esc(MOD_LABEL[m] || m)}: ${sevLabel(a)} → <b>${sevLabel(b)}</b>`).join(" · ")}</div>`).join("")}</div>`);
+  if (R.del.length) h.push(`<div class="sec"><h4>Entfallene Regeln <span class="n">${R.del.length}</span></h4>${R.del.map((r) =>
+    `<div class="rule"><div class="rh"><b>${esc(r.code)}</b><span class="badge grey">entfallen</span></div><div class="rv">${r.verbal ? verbal(r.verbal) : ""}</div><details><summary>DPM-XL</summary><pre class="x">${esc(r.expr)}</pre></details></div>`).join("")}</div>`);
+  const tech = ["dpmod", "dptech", "ruletech", "labtech"].map((k) => [k, d.counts[k] || 0]).filter(([, n]) => n);
+  if (tech.length) h.push(`<details class="sec techd"><summary>Technische Änderungen: ${tech.map(([k, n]) => `${CH[k].l} ${n}`).join(" · ")}</summary>
+    ${cellsSec("dpmod")}${cellsSec("dptech")}
+    ${(R.ren || []).length ? `<div class="sec"><h4>Regeln umcodiert <span class="n">${R.ren.length}</span></h4>${R.ren.map((x) => `<div class="sevch"><b>${esc(S.rules[x.id].code)}</b> ersetzt ${esc(x.old)} – gleiche Logik</div>`).join("")}</div>` : ""}
+    ${(R.fmt || []).length ? `<div class="sec"><h4>Nur Schreibweise <span class="n">${R.fmt.length}</span></h4>${R.fmt.map((x) => `<div class="sevch"><b>${esc(S.rules[x.id].code)}</b> gleiche Logik, anders formuliert</div>`).join("")}</div>` : ""}
+    ${e.labels.filter((l) => l[4]).map((l) => `<div class="sevch"><code class="c">${l[0]}${esc(l[1])}</code> ${esc(l[2])} → ${esc(l[3])}</div>`).join("")}</details>`);
   $("#dbody").innerHTML = h.join("") || '<div class="hint">Keine Änderungen.</div>';
   $("#dbody").scrollTop = 0;
   bindChips($("#dbody"));

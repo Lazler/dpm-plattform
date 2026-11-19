@@ -607,3 +607,79 @@ def _merge(segs):
         else:
             out.append(s)
     return out
+
+
+# --------------------------------------------------------------------------- Kanonische Form
+
+def canonical(expr: str) -> str:
+    """Schreibweisen-unabhängige Form einer Regel: 'with'-Scope in die Zellbezüge gezogen, Reihenfolge
+    kommutativer Operanden (+, =, und, oder, Mengen) sortiert, Klammern und 'interval' ignoriert.
+    Zwei Regeln mit gleicher kanonischer Form prüfen inhaltlich dasselbe."""
+    ast = parse(expr)
+    scope = {k: v for k, v in (ast["scope"] or {}).items() if k in ("t", "r", "c", "s", "default")}
+
+    def axis(spec):
+        if spec is None:
+            return "-"
+        if spec.get("all"):
+            return "*"
+        return ",".join(sorted("-".join(x) if isinstance(x, list) else x for x in spec["items"]))
+
+    def ref(r):
+        if "tablevar" in r:
+            return f"v({r['tablevar']})"
+        e = {**scope, **r}
+        return "{" + "|".join([e.get("t", "-"), axis(e.get("r")), axis(e.get("c")), axis(e.get("s")),
+                               str(e.get("default", "")).strip('"'), ",".join(sorted(r.get("items", [])))]) + "}"
+
+    def terms(n, sign, out):
+        if n.get("op") in ("+", "-"):
+            terms(n["args"][0], sign, out)
+            terms(n["args"][1], sign if n["op"] == "+" else -sign, out)
+        elif n.get("op") == "paren":
+            terms(n["args"][0], sign, out)
+        elif n.get("op") == "neg":
+            terms(n["args"][0], -sign, out)
+        else:
+            out.append(("+" if sign > 0 else "-") + c(n))
+        return out
+
+    def flat(n, op, out):
+        if n.get("op") == op:
+            for a in n["args"]:
+                flat(a, op, out)
+        elif n.get("op") == "paren":
+            flat(n["args"][0], op, out)
+        else:
+            out.append(c(n))
+        return out
+
+    def c(n):
+        if "ref" in n:
+            return ref(n["ref"])
+        if "item" in n:
+            return f"[{n['item']}]"
+        for k in ("num", "str", "lit", "id"):
+            if k in n:
+                return f"{k}:{n[k]}"
+        if "fn" in n:
+            return f"{n['fn']}(" + ";".join(c(a) for a in n["args"]) + (f"|{','.join(n['group'])}" if n.get("group") else "") + ")"
+        op, a = n["op"], n["args"]
+        if op == "paren":
+            return c(a[0])
+        if op in ("+", "-", "neg"):
+            return "(" + "".join(sorted(terms(n, 1, []))) + ")"
+        if op in ("and", "or"):
+            return f"{op}(" + ";".join(sorted(flat(n, op, []))) + ")"
+        if op in ("=", "!="):
+            return op.join(sorted([c(a[0]), c(a[1])]))
+        if op in (">=", ">", "<=", "<"):  # a >= b  ==  b <= a
+            mirror = {">=": "<=", ">": "<"}
+            if op in mirror:
+                return f"{c(a[1])}{mirror[op]}{c(a[0])}"
+            return f"{c(a[0])}{op}{c(a[1])}"
+        if op == "in":
+            return f"{c(a[0])} in [{','.join(sorted(n['items']))}]"
+        return f"{op}(" + ";".join(c(x) for x in a) + ")"
+
+    return c(ast["expr"])
