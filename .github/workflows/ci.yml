@@ -1,0 +1,40 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Python-Abhängigkeiten
+        run: pip install -r requirements.txt pytest
+
+      - name: Unit-Tests (Parser & Verbalisierung)
+        run: python -m pytest -q tests
+
+      - name: Daten erzeugen
+        run: python scripts/build_data.py --raw data/raw/4.4 --out web/data
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Playwright installieren
+        run: |
+          npm install --no-save --no-package-lock playwright@1.49.1
+          npx playwright install --with-deps chromium
+
+      - name: Rauchtest der Oberfläche
+        run: node tests/smoke.cjs

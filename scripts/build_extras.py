@@ -98,6 +98,9 @@ def build_diffs(c):
     os_.makedirs(f"{out}/diff", exist_ok=True)
     cur_by_code = {r["code"]: r for r in cur_rules.values()}
     index = []
+    written = {}
+    for f in os_.listdir(f"{out}/diff"):
+        os_.remove(f"{out}/diff/{f}")
 
     for b in bases:
         old = state(b["rk"])
@@ -204,8 +207,13 @@ def build_diffs(c):
                 res[code] = e
         doc = {"base": {"code": b["Code"], "date": str(b["Date"])}, "cur": {"code": cur["Code"]},
                "summary": dict(S), "removedTables": removed_tables, "tables": res}
-        _dump(f"{out}/diff/{b['Code']}.json", doc)
-        index.append({"code": b["Code"], "date": str(b["Date"]), "summary": dict(S)})
+        # identische Vergleiche (z. B. 3.4 und 3.5) nur einmal speichern
+        key = json.dumps([doc["summary"], removed_tables, res], sort_keys=True, default=str)
+        same = written.get(key)
+        if not same:
+            written[key] = b["Code"]
+            _dump(f"{out}/diff/{b['Code']}.json", doc)
+        index.append({"code": b["Code"], "date": str(b["Date"]), "summary": dict(S), "file": same or b["Code"]})
         print(f"  Vergleich {b['Code']} -> {cur['Code']}: {dict(S)}")
     _dump(f"{out}/diff/index.json", list(reversed(index)))
 

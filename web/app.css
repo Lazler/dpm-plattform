@@ -374,3 +374,7 @@ pre.x { white-space: pre-wrap; word-break: break-word; background: #f6f6f6; padd
   .hi-subs { width: 240px; }
   .search { width: 220px; }
 }
+
+/* Werkzeugleiste kompakt halten */
+.rgrp .rl { white-space: nowrap; }
+@media (max-width: 1700px) { .rgrp .rl { display: none; } }

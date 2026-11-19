@@ -268,6 +268,7 @@ function initRibbon() {
   $("#zplus").onclick = () => setZoom(S.zoom + 0.1);
   setZoom(S.zoom);
   $("#copyref").onclick = copyRef;
+  $("#export").onclick = exportCsv;
   const fi = $("#find");
   fi.oninput = () => runFind(fi.value);
   fi.onkeydown = (e) => {
@@ -295,6 +296,32 @@ function stepFind(d) {
   td.classList.add("cur");
   td.scrollIntoView({ block: "center", inline: "nearest" });
   $("#findinfo").textContent = `${F.i + 1} von ${F.hits.length}`;
+}
+
+// Export des aktuellen Bogens: eine Zeile je Zelle mit Datenpunkt und Regeln (Excel-kompatibel)
+function exportCsv() {
+  const doc = S.doc;
+  if (!doc) return;
+  const q = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+  const head = ["Bogen", "Zeile", "Zeilenbezeichnung", "Spalte", "Spaltenbezeichnung", "Blatt", "Status", "Kennzahl", "Datentyp",
+    "Dimensionen", "Vorzeichen", "Leer erlaubt", "Anzahl Regeln", "davon Fehler", "Regelcodes", "Regeln in Worten"];
+  const lines = [head.map(q).join(";")];
+  for (const c of doc.cells) {
+    const k = cellCodes(doc, c), v = doc.vars[c.var];
+    const rs = c.rules.map((id) => S.rules[id]).filter(Boolean);
+    lines.push([tc(doc.code), k.r, hPath(doc, c.r).map((h) => h.label).join(" › "), k.c, hPath(doc, c.c).map((h) => h.label).join(" › "),
+      k.s ? `${k.s} ${doc.hById.get(c.s)?.label || ""}` : "", c.excl ? "grau" : "meldepflichtig", v?.metric[0] || "", DTYPE[v?.metric[2]] || v?.metric[2] || "",
+      (v?.dims || []).map((d) => `${d[0]}: ${d[2]}`).join(" | "), SIGN[c.sign] || c.sign || "", c.nullable ? "ja" : "nein",
+      rs.length, rs.filter((r) => ruleSev(r, doc.module) === "error").length, rs.map((r) => r.code).join(", "),
+      rs.map((r) => `${r.code}: ${plain(r.verbal)}`).join("\n")].map(q).join(";"));
+  }
+  const blob = new Blob(["\ufeff" + lines.join("\r\n")], { type: "text/csv;charset=utf-8" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `${doc.code}_Release_${S.meta.release.Code}.csv`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  toast(`${doc.cells.length} Zellen exportiert`);
 }
 
 function toast(msg) {
@@ -667,10 +694,20 @@ function ruleCard(r, curKey, mod) {
       ${other.length ? `<span>· ${esc(other.join(", "))}</span>` : ""}</div>${ruleBody(r, curKey)}</div>`;
 }
 
+function ruleSummary(r) {
+  let t = plain(r.verbal);
+  if (S.doc) {
+    const pre = `In ${tc(S.doc.code)}, `;
+    if (t.startsWith(pre)) { t = t.slice(pre.length); t = t[0].toUpperCase() + t.slice(1); }
+    t = t.split(`${tc(S.doc.code)} · `).join("");
+  }
+  return t;
+}
+
 function ruleRow(r, curKey, mod) {
   const isErr = ruleSev(r, mod) === "error", open = S.openRules.has(r.id);
   return `<div class="rrow ${isErr ? "e" : ""} ${open ? "open" : ""}" data-rule="${r.id}">
-    <div class="rs"><span class="dot" title="${isErr ? "Fehler" : "Warnung"}"></span><div class="sum">${esc(plain(r.verbal))}</div>
+    <div class="rs"><span class="dot" title="${isErr ? "Fehler" : "Warnung"}"></span><div class="sum">${esc(ruleSummary(r))}</div>
       <div class="meta"><b>${esc(r.code)}</b><br>${esc(SRC_LABEL[r.src] || r.src)}</div></div>
     <div class="full">${open ? ruleBody(r, curKey) : ""}</div></div>`;
 }
@@ -839,22 +876,42 @@ function initSearch() {
     const R = Object.values(S.rules).filter((r) => r.code.toLowerCase().includes(s)).slice(0, 6)
       .map((r) => ({ k: "r", id: r.id, title: r.code, sub: plain(r.verbal).slice(0, 160) }));
     if (R.length) groups.push(["Regeln", R]);
-    const H = S.search.filter((h) => h[3].toLowerCase().includes(s)).slice(0, 12)
-      .map((h) => ({ k: "h", t: h[0], ax: h[1], code: h[2], title: h[3], sub: `${tc(h[0])} · ${h[1] === "r" ? "Zeile" : h[1] === "c" ? "Spalte" : "Blatt"} ${h[2]}` }));
+    // gleiche Bezeichnungen zusammenfassen: im aktuellen Bogen direkt springen, sonst Fundstellen zählen
+    const hits = S.search.filter((h) => h[3].toLowerCase().includes(s));
+    const byLabel = new Map();
+    for (const h of hits) {
+      const k = h[3].trim().toLowerCase();
+      if (!byLabel.has(k)) byLabel.set(k, []);
+      byLabel.get(k).push(h);
+    }
+    const ax = (a) => a === "r" ? "Zeile" : a === "c" ? "Spalte" : "Blatt";
+    const H = [...byLabel.values()].sort((a, b) => b.length - a.length).slice(0, 10).map((list) => {
+      const here = list.find((h) => h[0] === S.doc?.code) || list[0];
+      const nt = new Set(list.map((h) => h[0])).size;
+      return list.length === 1
+        ? { k: "h", t: here[0], ax: here[1], code: here[2], title: here[3], sub: `${tc(here[0])} · ${ax(here[1])} ${here[2]}` }
+        : { k: "hl", label: here[3], t: here[0], ax: here[1], code: here[2], title: here[3],
+          sub: `${list.length} Fundstellen in ${nt} Bögen – Enter: ${tc(here[0])} ${ax(here[1])} ${here[2]} · Alt+Enter: als Datenpunkt-Suche` };
+    });
     if (H.length) groups.push(["Zeilen & Spalten", H]);
     items = groups.flatMap((g) => g[1]); act = -1;
     res.innerHTML = groups.length ? groups.map(([g, list]) => `<div class="grp">${g}</div>` + list.map((it) =>
       `<div class="r" data-i="${items.indexOf(it)}"><b>${esc(it.title)}</b><small>${esc(it.sub)}</small></div>`).join("")).join("")
       : `<div class="r"><small>Keine Treffer</small></div>`;
     res.hidden = false;
-    $$(".r[data-i]", res).forEach((el) => el.onmousedown = (e) => { e.preventDefault(); go(items[+el.dataset.i]); });
+    $$(".r[data-i]", res).forEach((el) => el.onmousedown = (e) => { e.preventDefault(); go(items[+el.dataset.i], e.altKey); });
   };
-  const go = async (it) => {
+  const go = async (it, alt) => {
     if (!it) return;
     res.hidden = true; q.blur();
+    if (it.k === "hl" && alt) {
+      S.dpf.metric = null; S.dpf.dims = new Map(); S.dpf.text = it.label;
+      setView("dp");
+      return;
+    }
     if (it.k === "t") await openTable(it.t);
     if (it.k === "c") await openTable(it.t, { r: it.r, c: it.c });
-    if (it.k === "h") {
+    if (it.k === "h" || it.k === "hl") {
       const doc = await loadDoc(it.t);
       const c = doc.cells.find((x) => cellCodes(doc, x)[it.ax] === it.code && !x.excl);
       await openTable(it.t, c ? cellCodes(doc, c) : {});
@@ -877,7 +934,7 @@ function initSearch() {
       act = Math.max(0, Math.min(els.length - 1, act + (e.key === "ArrowDown" ? 1 : -1)));
       els.forEach((x, i) => x.classList.toggle("act", i === act));
       els[act]?.scrollIntoView({ block: "nearest" });
-    } else if (e.key === "Enter") go(items[act >= 0 ? act : 0]);
+    } else if (e.key === "Enter") go(items[act >= 0 ? act : 0], e.altKey);
     else if (e.key === "Escape") { res.hidden = true; q.blur(); }
   };
 }
@@ -891,15 +948,17 @@ const CH_TYPES = [
 
 function initCompare() {
   const sel = $("#cmpsel");
-  sel.innerHTML = `<option value="">– aus –</option>` + S.diffIdx.map((d) => {
+  sel.innerHTML = `<option value="">Release-Vergleich: aus</option>` + S.diffIdx.map((d) => {
     const n = (d.summary.tables_changed || 0) + (d.summary.tables_new || 0);
-    return `<option value="${esc(d.code)}">${esc(d.code)} (${esc(d.date)})${n ? "" : " – keine Änderung"}</option>`;
+    return `<option value="${esc(d.code)}">Änderungen seit ${esc(d.code)}${n ? "" : " (keine)"}</option>`;
   }).join("");
   sel.onchange = () => setCompare(sel.value);
   $("#cmponly").onchange = renderToc;
 }
 async function setCompare(code) {
-  S.diff = code ? await fetchJSON(`data/diff/${encodeURIComponent(code)}.json`) : null;
+  const entry = S.diffIdx.find((d) => d.code === code);
+  S.diff = code ? await fetchJSON(`data/diff/${encodeURIComponent(entry?.file || code)}.json`) : null;
+  if (S.diff && entry) S.diff.base = { code: entry.code, date: entry.date };
   $("#cmponlywrap").hidden = !S.diff;
   if (!S.diff) $("#cmponly").checked = false;
   renderToc();

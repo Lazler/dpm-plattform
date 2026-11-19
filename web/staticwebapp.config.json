@@ -1,0 +1,18 @@
+{
+  "routes": [
+    { "route": "/.auth/login/github", "statusCode": 404 },
+    { "route": "/.auth/login/twitter", "statusCode": 404 },
+    { "route": "/data/*", "allowedRoles": ["authenticated"], "headers": { "cache-control": "public, max-age=3600, must-revalidate" } },
+    { "route": "/vendor/*", "allowedRoles": ["authenticated"], "headers": { "cache-control": "public, max-age=604800, immutable" } },
+    { "route": "/*", "allowedRoles": ["authenticated"] }
+  ],
+  "responseOverrides": {
+    "401": { "redirect": "/.auth/login/aad?post_login_redirect_uri=.referrer", "statusCode": 302 }
+  },
+  "globalHeaders": {
+    "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
+    "X-Content-Type-Options": "nosniff",
+    "Referrer-Policy": "same-origin"
+  },
+  "mimeTypes": { ".json": "application/json" }
+}

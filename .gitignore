@@ -1,3 +1,8 @@
 __pycache__/
 *.pyc
 .DS_Store
+.pytest_cache/
+node_modules/
+
+# generierte Daten: lokal mit scripts/dev.py bzw. in GitHub Actions erzeugt
+web/data/
