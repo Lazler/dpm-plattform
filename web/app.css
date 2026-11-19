@@ -456,3 +456,14 @@ table.cmpt tr.del td:nth-child(2) { text-decoration: line-through; color: #a33; 
 .toolbar { flex-wrap: nowrap; overflow: hidden; }
 .findbox { min-width: 110px; }
 @media (max-width: 1250px) { .toolbar .zoom { display: none; } }
+
+/* Die App ist bewusst hell gestaltet: Formularelemente nicht in die dunkle Systemdarstellung kippen lassen */
+:root, :root[data-theme="dark"] { color-scheme: light; }
+html, body { background: #fafafa; color: var(--text); }
+input, select, textarea, option, button { color-scheme: light; color: var(--text); }
+input, select, textarea { background-color: #fff; }
+option { background-color: #fff; color: var(--text); }
+.topbar .search input { background: #fff; color: var(--text); }
+.seg button.on, .modsel button.on, .btn { color: #fff; }
+.views button, .brand { color: #fff; }
+.views button:not(.on) { color: #e3f1e8; }
