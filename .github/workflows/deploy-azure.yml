@@ -1,20 +1,26 @@
 name: Deploy – Azure Static Web Apps
 
-# Baut die Daten aus data/raw und veröffentlicht web/ als Azure Static Web App.
-# Voraussetzung: Repository-Secret AZURE_STATIC_WEB_APPS_API_TOKEN (Deployment-Token der Static Web App).
-# Ohne Secret wird der Lauf mit einem Hinweis übersprungen.
+# Baut die Daten aus dem jüngsten Ordner unter data/raw und veröffentlicht web/ als Azure Static Web App.
+#  - Push auf main            -> Produktivumgebung
+#  - Pull Request (z. B. neues DPM-Release) -> eigene Test-/Vorschauumgebung mit eigener URL,
+#                                wird beim Schließen des Pull Requests automatisch entfernt
+# Voraussetzung: Repository-Secret AZURE_STATIC_WEB_APPS_API_TOKEN. Ohne Secret wird der Lauf übersprungen.
 
 on:
   push:
     branches: [main]
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
+    branches: [main]
   workflow_dispatch:
 
 concurrency:
-  group: deploy-azure
+  group: deploy-azure-${{ github.event.pull_request.number || 'main' }}
   cancel-in-progress: true
 
 jobs:
   deploy:
+    if: github.event_name != 'pull_request' || github.event.action != 'closed'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
@@ -37,14 +43,28 @@ jobs:
         if: env.HAS_TOKEN == 'true'
         run: |
           pip install -r requirements.txt
-          python scripts/build_data.py --raw data/raw/4.4 --out web/data
+          python scripts/build_data.py --out web/data
 
       - name: Veröffentlichen
         if: env.HAS_TOKEN == 'true'
         uses: Azure/static-web-apps-deploy@v1
         with:
           azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
           action: upload
           app_location: web
           skip_app_build: true
           skip_api_build: true
+
+  close-preview:
+    if: github.event_name == 'pull_request' && github.event.action == 'closed'
+    runs-on: ubuntu-latest
+    env:
+      HAS_TOKEN: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN != '' }}
+    steps:
+      - name: Vorschauumgebung entfernen
+        if: env.HAS_TOKEN == 'true'
+        uses: Azure/static-web-apps-deploy@v1
+        with:
+          azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
+          action: close

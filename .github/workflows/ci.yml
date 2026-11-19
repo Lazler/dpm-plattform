@@ -25,7 +25,7 @@ jobs:
         run: python -m pytest -q tests
 
       - name: Daten erzeugen
-        run: python scripts/build_data.py --raw data/raw/4.4 --out web/data
+        run: python scripts/build_data.py --out web/data
 
       - uses: actions/setup-node@v4
         with:

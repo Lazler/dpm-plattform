@@ -13,7 +13,7 @@ import re
 import sys
 
 sys.path.insert(0, os.path.dirname(__file__))
-from dpmxl import canonical  # noqa: E402
+from dpmxl import canonical, parse  # noqa: E402
 from collections import defaultdict
 
 OP_SYMBOL = {2: "+", 5: "−", 13: "=", 14: "≤", 15: "≥", 18: ">", 19: "<", 20: "≠"}
@@ -411,5 +411,114 @@ def build_hierarchies(c):
         out.append({"code": cat["Code"], "name": (cat["Name"] or "").strip(), "desc": (cat["Description"] or "").strip(),
                     "enum": bool(cat["IsEnumerated"]),
                     "props": sorted({names.get(p) for p in cat_props.get(cid, set()) if names.get(p)}), "subs": subs})
-    _dump(f"{c['out']}/hierarchies.json", out)
+    eqrules = equation_rules(c)
+    _dump(f"{c['out']}/hierarchies.json", {"cats": out, "eqrules": eqrules})
+    print(f"  Summenbeziehungen mit Regeln verknüpft: {len(eqrules)} Gleichungen, {sum(len(v['r']) for v in eqrules.values())} Regelbezüge")
     print(f"  Hierarchien: {len(out)} Kategorien, {sum(len(x['subs']) for x in out)} Unterkategorien")
+
+
+# ============================================================================ Regeln -> Summenbeziehungen
+
+def _nrm(s):
+    return re.sub(r"\s+", " ", (s or "").strip().lower())
+
+
+def eq_key(parent, kids):
+    return _nrm(parent) + "=" + "+".join(sorted(_nrm(k) for k in kids))
+
+
+def equation_rules(c):
+    """Ordnet Summenregeln der Gleichung zu, die sie prüfen: Bei 'A = B + C + …' unterscheiden sich die Datenpunkte
+    von A und B, C, … in genau einer Dimension. Deren Werte bilden die Gleichung (z. B. Total = Central banks + …)."""
+    names = c["names"]
+    dims_of_var = {}
+    for vid, v in c["vv"].items():
+        d = {names.get(p): names.get(i) for p, i in c["ctx_raw"].get(v["ContextID"], [])}
+        dims_of_var[vid] = d
+    cell_dims, cols_of = {}, defaultdict(set)
+    for cell in c["cells"]:
+        if cell["IsExcluded"] or not cell["VariableVID"]:
+            continue
+        parts = [x.strip() for x in (cell["CellCode"] or "").strip("{}").split(",")]
+        cc = {x[0]: x[1:] for x in parts[1:] if x and x[0] in "rcs"}
+        key = (parts[0], cc.get("r", ""), cc.get("c", ""), cc.get("s", ""))
+        cell_dims[key] = dims_of_var.get(cell["VariableVID"], {})
+        cols_of[parts[0]].add(cc.get("c", ""))
+
+    def codes(spec):
+        if spec is None:
+            return [""]
+        if spec.get("all"):
+            return None
+        out = []
+        for x in spec["items"]:
+            out.extend(x if isinstance(x, list) else [x])
+        return out
+
+    def single(n):
+        while n.get("op") == "paren":
+            n = n["args"][0]
+        return n.get("ref")
+
+    def terms(n, out):
+        while n.get("op") == "paren":
+            n = n["args"][0]
+        if n.get("op") in ("+", "-"):
+            terms(n["args"][0], out)
+            terms(n["args"][1], out)
+        elif n.get("op") == "neg":
+            terms(n["args"][0], out)
+        else:
+            out.append(single(n))
+        return out
+
+    res = defaultdict(set)
+    labels = {}
+    for r in c["rules"].values():
+        try:
+            ast = parse(r["expr"])
+        except Exception:  # noqa: BLE001
+            continue
+        e = ast["expr"]
+        while e.get("op") == "paren":
+            e = e["args"][0]
+        if e.get("op") != "=":
+            continue
+        left, right = single(e["args"][0]), terms(e["args"][1], [])
+        if not left or len(right) < 2 or not all(right):
+            left, right = single(e["args"][1]), terms(e["args"][0], [])
+            if not left or len(right) < 2 or not all(right):
+                continue
+        scope = ast["scope"] or {}
+        refs = [{**scope, **x} for x in [left] + right]
+        t = refs[0].get("t")
+        if not t or any(x.get("t") != t for x in refs):
+            continue
+        # eine konkrete Spalte/Zeile wählen, in der alle Bezüge existieren
+        found = None
+        for col in (codes(refs[0].get("c")) or sorted(cols_of[t])):
+            ds = []
+            for x in refs:
+                rr, ss = codes(x.get("r")), codes(x.get("s"))
+                if not rr or len(rr) != 1 or (ss and len(ss) != 1):
+                    ds = None
+                    break
+                cc_ = codes(x.get("c"))
+                ds.append(cell_dims.get((t, rr[0], col if cc_ is None or len(cc_) != 1 else cc_[0], (ss or [""])[0])))
+            if ds and all(ds):
+                found = ds
+                break
+        if not found:
+            continue
+        par, kids = found[0], found[1:]
+        diff = {p for k in kids for p in set(par) | set(k) if par.get(p) != k.get(p)}
+        if len(diff) != 1:
+            continue
+        p = diff.pop()
+        if not all(k.get(p) for k in kids):
+            continue
+        # fehlt die Dimension beim Gesamtwert, ist es die Summe über alle Teile ("Gesamt")
+        key = eq_key(par.get(p) or "", [k[p] for k in kids])
+        labels[key] = (p, par.get(p) or "", sorted({k[p] for k in kids}))
+        res[key].add(r["id"])
+    return {k: {"dim": labels[k][0], "p": labels[k][1], "k": labels[k][2], "r": sorted(v)} for k, v in res.items()}

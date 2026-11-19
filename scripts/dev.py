@@ -16,7 +16,10 @@ import sys
 import webbrowser
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-RAW = os.path.join(ROOT, "data", "raw", "4.4")
+sys.path.insert(0, os.path.join(ROOT, "scripts"))
+from build_data import latest_raw  # noqa: E402
+
+RAW = latest_raw(os.path.join(ROOT, "data", "raw"))
 WEB = os.path.join(ROOT, "web")
 META = os.path.join(WEB, "data", "meta.json")
 

@@ -1099,17 +1099,38 @@ function cellChangeHtml(cell) {
   if (!types.length && !ruleNew.length && !ruleChg.length && !ruleSev.length && !ruleTech.length && e.st !== "new") return "";
   const out = [];
   const kind = types.find((t) => t.startsWith("dp"));
-  const verdict = types.some((t) => CH[t]?.content) || ruleNew.length || ruleChg.length || ruleSev.length
-    ? ["c", "Inhaltlich geändert"] : ["t", "Nur technisch geändert"];
-  if (e.st === "new") out.push(`<div class="verdict c">Bogen ist neu seit ${esc(S.diff.base.code)}</div>`);
-  else out.push(`<div class="verdict ${verdict[0]}">${verdict[1]} <span>seit ${esc(S.diff.base.code)}</span></div>`);
+  const base = esc(S.diff.base.code);
+  const dpState = e.st === "new" ? ["c", "neu (Bogen gab es noch nicht)"]
+    : types.includes("new") ? ["c", "neue Zelle"]
+    : types.includes("dp") ? ["c", "inhaltlich geändert"]
+    : types.includes("dpmod") ? ["m", "Modellierung angepasst – Bedeutung im Kern gleich"]
+    : types.includes("dptech") ? ["t", "unverändert – nur Bezeichnungen umbenannt"]
+    : ["t", "unverändert"];
+  const rparts = [ruleNew.length && `${ruleNew.length} neu`, ruleChg.length && `${ruleChg.length} geändert`, ruleSev.length && `${ruleSev.length} Schweregrad geändert`].filter(Boolean);
+  out.push(`<div class="verdicts"><div class="vd ${dpState[0]}"><span>Datenpunkt</span><b>${dpState[1]}</b></div>
+    <div class="vd ${rparts.length ? "c" : "t"}"><span>Regeln</span><b>${rparts.length ? rparts.join(" · ") : "unverändert"}</b></div>
+    <div class="vbase">Vergleich mit Release ${base}</div></div>`);
   const simple = types.filter((t) => !t.startsWith("dp")).map((t) => CH[t]?.l).filter(Boolean);
   if (simple.length) out.push(`<div class="chline">${simple.map((l) => `<span class="tagc chg">${esc(l)}</span>`).join(" ")}</div>`);
   if (kind && e.dp[cell.id]) {
     const v = S.doc.vars[cell.var], ren = e.dp[cell.id][2] || [];
     if (kind === "dptech") {
-      out.push(`<div class="sec"><h4>Datenpunkt</h4><div class="muted">Gleiche Bedeutung, nur Bezeichnungen geändert:</div>
-        <ul class="renl">${ren.map(([a, b]) => `<li><span>${esc(a)}</span> → <b>${esc(b)}</b></li>`).join("") || "<li>Codes neu vergeben</li>"}</ul></div>`);
+      const od = e.dp[cell.id][1], renMap = new Map(ren);
+      const used = new Set();
+      const rows = v.dims.map((dd) => {
+        let i = od.findIndex((x, j) => !used.has(j) && (x[0] === dd[0] || renMap.get(x[0]) === dd[0]));
+        if (i < 0) i = od.findIndex((x, j) => !used.has(j) && (nrm(x[1]) === nrm(dd[2]) || renMap.get(x[1]) === dd[2]));
+        if (i >= 0) used.add(i);
+        const o = od[i] || [];
+        return { dimOld: o[0], dim: dd[0], valOld: o[1], val: dd[2] };
+      });
+      const cellTxt = (a_, b_) => a_ && a_ !== b_ ? `<s>${esc(a_)}</s> → <b>${esc(b_)}</b>` : esc(b_);
+      out.push(`<div class="sec"><h4>Datenpunkt</h4>
+        <div class="muted" style="margin-bottom:8px">Die Zelle meldet dasselbe wie in ${base}. Geändert haben sich nur die Namen, mit denen die EBA den Datenpunkt beschreibt (Merkmale bzw. Werte):</div>
+        <table class="cmpt"><thead><tr><th>Merkmal</th><th>Wert</th></tr></thead><tbody>
+        <tr><td>Kennzahl</td><td>${cellTxt(e.dp[cell.id][0], v.metric[0])}</td></tr>
+        ${rows.map((r) => `<tr class="${r.dimOld !== r.dim || r.valOld !== r.val ? "ren" : ""}"><td>${cellTxt(r.dimOld, r.dim)}</td><td>${cellTxt(r.valOld, r.val)}</td></tr>`).join("")}
+        </tbody></table></div>`);
     } else {
       out.push(`<div class="sec"><h4>Datenpunkt · ${kind === "dpmod" ? "Modellierung angepasst" : "inhaltlich geändert"}</h4>
         ${kind === "dpmod" ? `<div class="muted" style="margin-bottom:6px">Dimension ergänzt oder entfallen, Werte sonst gleich – meist eine Präzisierung im DPM.</div>` : ""}
@@ -1676,25 +1697,69 @@ function renderDPResults() {
   $$("#dpmain .dpr").forEach((el) => el.onclick = () => { setView("sheet"); openTable(el.dataset.t, { r: el.dataset.r, c: el.dataset.c, s: el.dataset.s }); });
 }
 
-// ------------------------------------------------------------------ Hierarchien
-function subName(s) {
-  if (s.name && !/^(subcategory|hierarchy)[_ ]?\w*$/i.test(s.name.trim())) return s.name;
-  const root = s.items.find((i) => i[2] == null);
-  return root ? root[0] : s.code;
-}
+// ------------------------------------------------------------------ Hierarchien (Werte und Summenbeziehungen je Dimension)
+const nrm = (s) => (s || "").trim().toLowerCase().replace(/\s+/g, " ");
+const eqKey = (p, kids) => nrm(p) + "=" + kids.map(nrm).sort().join("+");
+
 async function loadHier() {
-  if (!S.hier) S.hier = await fetchJSON("data/hierarchies.json");
+  if (!S.hier) {
+    const h = await fetchJSON("data/hierarchies.json");
+    S.hier = Array.isArray(h) ? h : h.cats;
+    S.eqRules = Array.isArray(h) ? {} : h.eqrules || {};
+  }
+  await loadDP();
+  if (S.hdims) return;
+  const P = S.dp.props, I = S.dp.items;
+  const dims = new Map();
+  for (const v of S.dp.vars) for (const [p, i] of v[1]) {
+    const name = P[p][0];
+    let d = dims.get(name);
+    if (!d) dims.set(name, d = { name, code: P[p][1], pi: p, cells: 0, tables: new Set(), items: new Map() });
+    d.cells += v[2].length;
+    v[2].forEach((c) => d.tables.add(c[0]));
+    let it = d.items.get(I[i][1]);
+    if (!it) d.items.set(I[i][1], it = { name: I[i][0], sig: I[i][1], ii: i, cells: 0 });
+    it.cells += v[2].length;
+  }
+  for (const d of dims.values()) d.cat = S.hier.find((c) => c.props.includes(d.name)) || null;
+  S.hdims = [...dims.values()].sort((a, b) => b.cells - a.cells);
+  // Summenregeln der EBA tragen ihre Gleichung im Klartext: "[X] must be equal to +[A] +[B]"
+  S.hrules = new Map();
+  for (const r of Object.values(S.rules)) {
+    const m = (r.desc || "").match(/\[([^\]]+)\]\s*must be equal to\s*(.+)$/i);
+    if (!m) continue;
+    const key = eqKey(m[1], [...m[2].matchAll(/\[([^\]]+)\]/g)].map((x) => x[1]));
+    if (!S.hrules.has(key)) S.hrules.set(key, []);
+    S.hrules.get(key).push(r.id);
+  }
+  for (const [key, e] of Object.entries(S.eqRules)) {
+    if (!S.hrules.has(key)) S.hrules.set(key, []);
+    for (const id of e.r) if (!S.hrules.get(key).includes(id)) S.hrules.get(key).push(id);
+  }
+}
+
+// Gleichungen aus allen Hierarchien einer Kategorie, doppelte zusammengeführt
+function catEquations(cat) {
+  if (cat._eq) return cat._eq;
+  const map = new Map();
+  for (const s of cat.subs) {
+    if (!s.hier) continue;
+    s.items.forEach((it, idx) => {
+      const kids = s.items.filter((k) => k[2] === idx);
+      if (!kids.length) return;
+      const key = eqKey(it[0], kids.map((k) => k[0]));
+      let e = map.get(key);
+      if (!e) map.set(key, e = { parent: it, kids, key, rules: new Set([...(S.hrules.get(key) || []), ...(S.hrules.get(eqKey("", kids.map((k) => k[0]))) || [])]), lists: [] });
+      s.rules.forEach((id) => e.rules.add(id));
+      e.lists.push(s.code);
+    });
+  }
+  return (cat._eq = [...map.values()]);
 }
 
 async function openHier(propName, itemSig) {
   await loadHier();
-  const ci = S.hier.findIndex((c) => c.props.includes(propName));
-  if (ci < 0) return;
-  const subs = S.hier[ci].subs;
-  const cand = subs.map((s, i) => [s, i]).filter(([s]) => s.items.some((x) => x[1] === itemSig))
-    .sort((a, b) => (b[0].hier - a[0].hier) || (b[0].rules.length - a[0].rules.length) || (b[0].items.length - a[0].items.length));
-  const si = cand.length ? cand[0][1] : 0;
-  S.hi = { ...S.hi, cat: ci, sub: Math.max(0, si), hit: itemSig };
+  S.hi = { ...S.hi, dim: propName, hit: itemSig || null, filter: "" };
   setView("hier");
 }
 
@@ -1702,64 +1767,131 @@ async function renderHier() {
   $("#himain").innerHTML = '<div class="empty">Lade Hierarchien …</div>';
   await loadHier();
   const H = S.hi;
-  $("#hifilter").value = H.filter;
-  $("#hifilter").oninput = () => { H.filter = $("#hifilter").value; renderHierCats(); };
-  if (H.cat == null) H.cat = Math.max(0, S.hier.findIndex((c) => c.code === "qSR"));
-  if (H.sub == null) H.sub = 0;
-  renderHierCats();
-}
-
-function renderHierCats() {
-  const H = S.hi, f = H.filter.toLowerCase();
-  const match = (c) => !f || (c.name + " " + c.code + " " + c.props.join(" ")).toLowerCase().includes(f)
-    || c.subs.some((s) => s.items.some((i) => (i[0] || "").toLowerCase().includes(f)));
-  $("#hicats").innerHTML = S.hier.map((c, i) => match(c) ? `<div class="hc-it ${i === H.cat ? "on" : ""}" data-i="${i}"><b>${esc(c.name)}</b>
-    <span>${esc(c.code)} · ${c.subs.length} Listen/Hierarchien${c.props.length ? " · Dimension: " + esc(c.props.slice(0, 2).join(", ")) + (c.props.length > 2 ? " …" : "") : ""}</span></div>` : "").join("");
-  $$("#hicats .hc-it").forEach((el) => el.onclick = () => { H.cat = +el.dataset.i; H.sub = 0; H.hit = null; renderHierCats(); });
-  $("#hicats .hc-it.on")?.scrollIntoView({ block: "nearest" });
-  renderHierSubs();
-}
-
-function renderHierSubs() {
-  const H = S.hi, cat = S.hier[H.cat];
-  if (!cat) return;
-  const f = H.filter.toLowerCase();
-  $("#hisubs").innerHTML = `<h4>${esc(cat.name)}</h4>` + cat.subs.map((s, i) => {
-    const hit = f && s.items.some((it) => (it[0] || "").toLowerCase().includes(f));
-    return `<div class="hs ${i === H.sub ? "on" : ""}" data-i="${i}"><b>${esc(subName(s))}</b>${hit ? " ●" : ""}
-      <small>${esc(s.code)} · ${s.hier ? "Hierarchie" : "Liste"} · ${s.items.length} Werte${s.rules.length ? ` · ${s.rules.length} Regeln` : ""}${s.tables.length ? ` · in ${s.tables.length} Bögen` : ""}</small></div>`;
-  }).join("");
-  $$("#hisubs .hs").forEach((el) => el.onclick = () => { H.sub = +el.dataset.i; renderHierSubs(); });
-  $("#hisubs .hs.on")?.scrollIntoView({ block: "nearest" });
+  if (!H.dim || !S.hdims.some((d) => d.name === H.dim)) H.dim = (S.hdims.find((d) => d.name === "Counterparty sector") || S.hdims[0]).name;
+  $("#hifilter").value = H.filter || "";
+  $("#hifilter").oninput = () => { H.filter = $("#hifilter").value; renderHierDims(); };
+  renderHierDims();
   renderHierMain();
 }
 
+function renderHierDims() {
+  const H = S.hi, f = nrm(H.filter);
+  const list = S.hdims.filter((d) => !f || nrm(d.name).includes(f) || [...d.items.values()].some((it) => nrm(it.name).includes(f)));
+  $("#hicats").innerHTML = `<div class="hc-head">Dimensionen <span>${list.length}</span></div>` + list.map((d) => {
+    const hit = f && !nrm(d.name).includes(f);
+    return `<div class="hc-it ${d.name === H.dim ? "on" : ""}" data-d="${esc(d.name)}"><b>${esc(d.name)}</b>
+      <span>${fmt(d.items.size)} Werte · ${fmt(d.cells)} Zellen · ${d.tables.size} Bögen${hit ? " · Wert passt" : ""}</span></div>`;
+  }).join("");
+  $$("#hicats .hc-it").forEach((el) => el.onclick = () => { H.dim = el.dataset.d; H.hit = null; renderHierDims(); renderHierMain(); });
+  $("#hicats .hc-it.on")?.scrollIntoView({ block: "nearest" });
+}
+
 function renderHierMain() {
-  const H = S.hi, cat = S.hier[H.cat], sub = cat?.subs[H.sub];
-  if (!sub) { $("#himain").innerHTML = ""; return; }
-  const kids = new Map();
-  sub.items.forEach((it, i) => { const p = it[2] ?? -1; if (!kids.has(p)) kids.set(p, []); kids.get(p).push(i); });
-  const f = H.filter.toLowerCase();
-  const node = (i, d) => {
-    const it = sub.items[i], ch = kids.get(i) || [];
-    const op = it[3] || "";
-    const opCls = op === "−" ? "m" : op === "=" || op === "≤" || op === "≥" ? "eq" : "";
-    const hit = (H.hit && it[1] === H.hit) || (f && (it[0] || "").toLowerCase().includes(f));
-    return `<div class="nd ${d === 0 && ch.length ? "root" : ""} ${hit ? "hit" : ""}" style="padding-left:${6 + d * 22}px">
-      <span class="op ${opCls}" title="${op === "=" ? "ist die Summe der darunterliegenden Werte" : op === "+" ? "wird addiert" : op === "−" ? "wird abgezogen" : ""}">${esc(op)}</span>
-      <span class="nm">${esc(it[0])}</span> <code>${esc(it[1] || "")}</code></div>` + ch.map((c) => node(c, d + 1)).join("");
+  const H = S.hi, d = S.hdims.find((x) => x.name === H.dim);
+  if (!d) return;
+  const cat = d.cat, f = nrm(H.filter);
+  const used = d.items;
+  const valueChip = (sig, name) => {
+    const it = used.get(sig);
+    return it ? `<button class="vchip" data-sig="${esc(sig)}" title="Alle ${it.cells} Zellen mit diesem Wert in der Datenpunkt-Suche zeigen">${fmt(it.cells)}</button>` : `<span class="vnone" title="In FINREP/AE mit dieser Dimension nicht verwendet">–</span>`;
   };
-  const roots = kids.get(-1) || [];
-  const mod = S.doc?.module || "FINREP9";
-  $("#himain").innerHTML = `<h3>${esc(subName(sub))}</h3>
-    <div class="sub" style="color:#666">${esc(sub.code)} · Kategorie <b>${esc(cat.name)}</b> (${esc(cat.code)})${cat.props.length ? ` · genutzt von Dimension(en): ${esc(cat.props.join(", "))}` : ""}</div>
-    ${sub.desc ? `<p>${esc(sub.desc)}</p>` : ""}
-    ${sub.hier ? `<div class="note">Lesart: Ein Wert mit <b>=</b> ist die Summe der darunterliegenden Werte (<b>+</b> addieren, <b>−</b> abziehen). Aus solchen Hierarchien erzeugt die EBA automatisch Summenregeln für alle Meldebögen, die diese Dimension nutzen.</div>`
-      : `<div class="note">Werteliste ohne Summenbeziehung – z. B. die erlaubten Werte einer Aufzählungs-Spalte.</div>`}
-    <div class="tree">${roots.map((r) => node(r, 0)).join("")}</div>
-    ${sub.tables.length ? `<div class="sec"><h4>Direkt verwendet in Meldebögen <span class="n">${sub.tables.length}</span></h4><div class="chips">${sub.tables.map((t) => `<span class="chip" data-t="${t}">${esc(tc(t))}</span>`).join("")}</div></div>` : ""}
-    ${sub.rules.length ? `<div class="sec"><h4>Daraus erzeugte Regeln <span class="n">${sub.rules.length}</span></h4>${sub.rules.slice(0, 40).map((id) => S.rules[id] ? ruleCard(S.rules[id], null, Object.keys(S.rules[id].sev).includes(mod) ? mod : Object.keys(S.rules[id].sev)[0]) : "").join("")}${sub.rules.length > 40 ? `<div class="hint">… und ${sub.rules.length - 40} weitere</div>` : ""}</div>` : ""}`;
+  // 1) Werte als Baum: die Hierarchie, die die meisten verwendeten Werte abdeckt
+  let base = null;
+  if (cat) {
+    let best = -1;
+    for (const s of cat.subs) {
+      if (!s.hier) continue;
+      const cov = s.items.filter((it) => used.has(it[1])).length;
+      if (cov > best || (cov === best && s.items.length > base.items.length)) { best = cov; base = s; }
+    }
+    if (base && best < 2) base = null;
+  }
+  let treeHtml = "", rest = [...used.values()];
+  if (base) {
+    const kids = new Map();
+    base.items.forEach((it, i) => { const p = it[2] ?? -1; if (!kids.has(p)) kids.set(p, []); kids.get(p).push(i); });
+    const inTree = new Set(base.items.map((it) => it[1]));
+    rest = rest.filter((it) => !inTree.has(it.sig));
+    const node = (i, depth) => {
+      const it = base.items[i], ch = kids.get(i) || [];
+      const hit = (H.hit && it[1] === H.hit) || (f && nrm(it[0]).includes(f));
+      return `<div class="vrow ${used.has(it[1]) ? "" : "unused"} ${hit ? "hit" : ""}" style="padding-left:${8 + depth * 20}px">
+        <span class="vname">${ch.length ? "▾ " : ""}${esc(it[0])}</span>${valueChip(it[1])}</div>` + ch.map((c) => node(c, depth + 1)).join("");
+    };
+    treeHtml = (kids.get(-1) || []).map((r) => node(r, 0)).join("");
+  }
+  rest.sort((a, b) => b.cells - a.cells);
+  const restHtml = rest.map((it) => `<div class="vrow ${(H.hit === it.sig || (f && nrm(it.name).includes(f))) ? "hit" : ""}"><span class="vname">${esc(it.name)}</span>${valueChip(it.sig)}</div>`).join("");
+
+  // 2) Summenbeziehungen, die Werte dieser Dimension betreffen
+  const eqs = cat ? catEquations(cat).filter((e) => used.has(e.parent[1]) || e.kids.some((k) => used.has(k[1]))) : [];
+  // aus Regeln abgeleitete Gleichungen dieser Dimension, die in keiner EBA-Liste stehen
+  const byName = new Map([...used.values()].map((it) => [nrm(it.name), it]));
+  const known = new Set(eqs.flatMap((e) => [e.key, eqKey("", e.kids.map((k) => k[0]))]));
+  for (const [key, re_] of Object.entries(S.eqRules)) {
+    if (re_.dim !== d.name || known.has(key)) continue;
+    const item = (n) => [n, byName.get(nrm(n))?.sig || "", null, "+"];
+    eqs.push({ parent: re_.p ? item(re_.p) : ["Gesamt (ohne Angabe)", "", null, "="], kids: re_.k.map(item), key, rules: new Set(re_.r), lists: [], derived: true });
+  }
+  eqs.sort((a, b) => b.rules.size - a.rules.size || (used.has(b.parent[1]) - used.has(a.parent[1])) || b.kids.filter((k) => used.has(k[1])).length - a.kids.filter((k) => used.has(k[1])).length);
+  const showAll = H.allEq === d.name;
+  const eqHtml = eqs.slice(0, showAll ? 999 : 12).map((e, i) => {
+    const terms = e.kids.map((k, j) => `${j ? `<span class="op">${k[3] === "−" ? "−" : "+"}</span>` : k[3] === "−" ? `<span class="op">−</span>` : ""}<span class="term ${used.has(k[1]) ? "" : "unused"}">${esc(k[0])}</span>`).join(" ");
+    const rules = [...e.rules].map((id) => S.rules[id]).filter(Boolean);
+    const tabs = [...new Set(rules.flatMap((r) => r.tables))];
+    return `<div class="eq" data-i="${i}">
+      <div class="eqline"><span class="term parent">${esc(e.parent[0])}</span> <span class="op">=</span> ${terms}</div>
+      ${e.derived ? '<div class="hint" style="margin-top:2px">aus den Summenregeln abgeleitet (in keiner EBA-Werteliste so hinterlegt)</div>' : ""}
+      <div class="eqmeta">${rules.length ? `<button class="lnk eqr">${rules.length} Summenregel${rules.length > 1 ? "n" : ""} ansehen</button> · geprüft in ${tabs.slice(0, 6).map((t) => `<span class="tag" data-t="${esc(t)}">${esc(tc(t))}</span>`).join("")}${tabs.length > 6 ? ` +${tabs.length - 6}` : ""}`
+        : `<span class="muted">keine Summenregel in FINREP/AE gefunden</span>`}</div>
+      <div class="eqrules" hidden></div></div>`;
+  }).join("");
+
+  // 3) Wertelisten (erlaubte Werte, z. B. für Aufzählungs-Spalten)
+  const lists = cat ? cat.subs.filter((s) => !s.hier && s.tables.length) : [];
+
+  $("#himain").innerHTML = `
+    <div class="hm-head"><h3>${esc(d.name)}</h3>
+      <div class="sub">Dimension <code class="c">${esc(d.code || "")}</code>${cat ? ` · Wertebereich „${esc(cat.name)}“` : ""} · verwendet in <b>${fmt(d.cells)}</b> Zellen auf <b>${d.tables.size}</b> Meldebögen</div></div>
+    <div class="note hm-intro">Eine <b>Dimension</b> beschreibt ein Merkmal eines Datenpunkts – hier <i>${esc(d.name)}</i>. Sie hat einen festen Satz von <b>Werten</b>.
+      Zwischen den Werten bestehen teils <b>Summenbeziehungen</b> (Gesamt = Summe der Teile); daraus erzeugt die EBA automatisch Summenregeln für alle Bögen, die die Dimension nutzen.
+      Die Zahl rechts zeigt, in wie vielen Zellen ein Wert vorkommt – Klick öffnet die Zellen.</div>
+    <div class="hm-grid">
+      <section><h4>Werte <span class="n">${used.size}</span></h4>
+        <div class="vlist">${treeHtml}${restHtml ? `${treeHtml ? '<div class="vsub">Weitere verwendete Werte</div>' : ""}${restHtml}` : ""}</div>
+        ${base ? `<div class="hint" style="margin-top:6px">Baum nach EBA-Hierarchie <code class="c">${esc(base.code)}</code>; ausgegraute Werte kommen in FINREP/AE mit dieser Dimension nicht vor.</div>` : ""}</section>
+      <section><h4>Summenbeziehungen <span class="n">${eqs.length}</span></h4>
+        ${eqHtml || '<div class="hint">Für diese Dimension sind keine Summenbeziehungen hinterlegt.</div>'}
+        ${eqs.length > 12 && !showAll ? `<button class="lnk" id="eqall">alle ${eqs.length} anzeigen</button>` : ""}
+        ${lists.length ? `<details class="techd" style="margin-top:14px"><summary>${lists.length} Werteliste(n) für Aufzählungs-Spalten</summary>
+          ${lists.map((s) => `<div class="sevch"><b>${esc(subName(s))}</b> <span class="muted">· ${s.items.length} Werte · in ${s.tables.map((t) => esc(tc(t))).join(", ")}</span>
+            <div class="muted" style="margin-top:3px">${s.items.slice(0, 12).map((it) => esc(it[0])).join(" · ")}${s.items.length > 12 ? " …" : ""}</div></div>`).join("")}</details>` : ""}
+      </section>
+    </div>`;
+  $$("#himain .vchip").forEach((b) => b.onclick = () => {
+    const it = used.get(b.dataset.sig);
+    S.dpf.metric = null; S.dpf.text = ""; S.dpf.dims = new Map([[d.pi, it.ii]]);
+    setView("dp");
+  });
+  $$("#himain .eq").forEach((el) => {
+    const btn = $(".eqr", el);
+    if (!btn) return;
+    btn.onclick = () => {
+      const box = $(".eqrules", el), e = eqs[+el.dataset.i];
+      box.hidden = !box.hidden;
+      if (!box.hidden && !box.innerHTML) {
+        box.innerHTML = [...e.rules].map((id) => S.rules[id]).filter(Boolean).map((r) => ruleRow(r, null, Object.keys(r.sev)[0])).join("");
+        bindRuleRows(box, null, null); bindChips(box);
+      }
+    };
+  });
+  $("#eqall")?.addEventListener("click", () => { H.allEq = d.name; renderHierMain(); });
   bindChips($("#himain"));
-  $$("#himain [data-act=lineage]").forEach((b) => b.onclick = () => { S.linRule = +b.dataset.rule; S.linMode = "cell"; setView("lineage"); });
-  $("#himain .nd.hit")?.scrollIntoView({ block: "center" });
+  $("#himain .vrow.hit")?.scrollIntoView({ block: "center" });
+}
+
+function subName(s) {
+  if (s.name && !/^(subcategory|hierarchy)[_ ]?\w*$/i.test(s.name.trim())) return s.name;
+  const root = s.items.find((i) => i[2] == null);
+  return root ? root[0] : s.code;
 }

@@ -2,7 +2,7 @@
 Erzeugt die Daten für den DPM-Explorer aus dem Parquet-Export.
 
     python scripts/build_data.py            # Standard: AE + FINREP9, Release 4.4
-    python scripts/build_data.py --raw data/raw/4.4 --out web/data
+    python scripts/build_data.py --raw data/raw/4.5 --modules FINREP9,AE
 
 Ausgabe (JSON, wird von web/ geladen):
     meta.json            Module, Tabellen, Kennzahlen, Metamodell-Zählungen
@@ -25,17 +25,32 @@ sys.path.insert(0, os.path.dirname(__file__))
 from dpmxl import ParseError, Verbalizer, tcode  # noqa: E402
 from build_extras import build_datapoints, build_diffs, build_hierarchies  # noqa: E402
 
-MODULES = {457: "AE", 462: "FINREP9"}  # ModuleVID -> Kürzel (aktuelle Versionen in Release 4.4)
+# Module, die der Explorer zeigt (Modul-Codes der EBA). Die jeweils aktuelle Modulversion wird je Release
+# automatisch ermittelt – bei einem neuen Release ist hier nichts anzupassen.
+MODULE_CODES = {"FINREP9": "FINREP9", "AE": "AE"}  # EBA-Modulcode -> Kürzel im Explorer
+MODULES: dict[int, str] = {}  # ModuleVID -> Kürzel (wird beim Lauf befüllt)
+
+
+def latest_raw(base="data/raw"):
+    """jüngster Release-Ordner unter data/raw (z. B. 4.4, 4.5, 4.10 – numerisch sortiert)"""
+    dirs = [d for d in os.listdir(base) if os.path.isdir(os.path.join(base, d))] if os.path.isdir(base) else []
+    if not dirs:
+        return os.path.join(base, "4.4")
+    key = lambda d: [int(x) if x.isdigit() else x for x in re.split(r"[.\-_]", d)]
+    return os.path.join(base, sorted(dirs, key=key)[-1])
 
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--raw", default="data/raw/4.4")
+    ap.add_argument("--raw", default=None, help="Parquet-Ordner eines Releases (Standard: jüngster Ordner unter data/raw)")
+    ap.add_argument("--modules", default=",".join(MODULE_CODES), help="EBA-Modulcodes, z. B. FINREP9,AE,COREP_OF")
     ap.add_argument("--out", default="web/data")
     ap.add_argument("--instructions", default="data/instructions",
                     help="Ordner mit Word-Dateien (.docx); Unterordner je Release wird bevorzugt")
     args = ap.parse_args()
 
+    args.raw = args.raw or latest_raw()
+    print(f"Quelle: {args.raw}")
     con = duckdb.connect()
     for f in os.listdir(args.raw):
         if f.endswith(".parquet"):
@@ -46,6 +61,18 @@ def main():
         cols = [d[0] for d in cur.description]
         return [dict(zip(cols, r)) for r in cur.fetchall()]
 
+    codes = [c.strip() for c in args.modules.split(",") if c.strip()]
+    cur_mv = rows(f"""select mv.ModuleVID, mv.Code from ModuleVersion mv left join Release r on r.ReleaseID=mv.StartReleaseID
+                      where mv.EndReleaseID is null and mv.Code in ({",".join("'" + c + "'" for c in codes)})
+                      order by r.Date""")
+    for r in cur_mv:  # je Code die jüngste offene Version
+        for vid in [k for k, v in MODULES.items() if v == MODULE_CODES.get(r["Code"], r["Code"])]:
+            del MODULES[vid]
+        MODULES[r["ModuleVID"]] = MODULE_CODES.get(r["Code"], r["Code"])
+    missing = set(codes) - {r["Code"] for r in cur_mv}
+    if missing:
+        print(f"  Hinweis: keine aktuelle Modulversion für {sorted(missing)} gefunden")
+    print(f"  Module: {', '.join(f'{v} (ModuleVID {k})' for k, v in MODULES.items())}")
     mv_list = ",".join(str(m) for m in MODULES)
     os.makedirs(f"{args.out}/tables", exist_ok=True)
 

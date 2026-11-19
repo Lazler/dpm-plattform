@@ -54,6 +54,11 @@ node tests/smoke.cjs                 # Oberfläche (benötigt Playwright und erz
 
 GitHub Actions führt beides bei jedem Pull Request aus (`.github/workflows/ci.yml`).
 
+## Neues DPM-Release
+
+Parquet-Export nach `data/raw/<Release>/` legen, Pull Request öffnen – Daten, Vergleich und Oberfläche passen sich
+automatisch an, eine Testumgebung entsteht pro Pull Request. Details: [`docs/neues-release.md`](docs/neues-release.md).
+
 ## Betrieb in Azure
 
 Siehe [`docs/azure.md`](docs/azure.md): Azure Static Web Apps mit Entra-ID-Login, Deployment über
