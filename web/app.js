@@ -77,7 +77,7 @@ async function init() {
 // ------------------------------------------------------------------ Navigation
 function nav(hash, push) {
   if (location.hash === hash) return;
-  push ? history.pushState(null, "", hash) : history.replaceState(null, "", hash);
+  try { push ? history.pushState(null, "", hash) : history.replaceState(null, "", hash); } catch { /* eingebettete Ansicht ohne Verlauf */ }
 }
 function sheetHash() {
   if (!S.doc) return "#/";
@@ -276,6 +276,7 @@ function initRibbon() {
   setZoom(S.zoom);
   $("#copyref").onclick = copyRef;
   $("#export").onclick = exportCsv;
+  if (document.getElementById("demoflag")) $("#export").hidden = true; // in eingebetteten Demos sind Downloads gesperrt
   const fi = $("#find");
   fi.oninput = () => runFind(fi.value);
   fi.onkeydown = (e) => {
